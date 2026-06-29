@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from poirot.backend.agents.state.types import Artifact
+
+
+@dataclass(frozen=True)
+class ReportResult:
+    draft_report: str
+    final_report: str
+    artifacts: tuple[Artifact, ...] = field(default_factory=tuple)
+    warnings: tuple[str, ...] = field(default_factory=tuple)

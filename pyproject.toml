@@ -1,0 +1,32 @@
+[project]
+name = "poirot"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "langchain>=1.2.3",
+    "langchain-openai>=1.1.7",
+    "langchain-deepseek>=1.0.1",
+    "openai>=1.0.0",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["poirot*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.4",
+]
+
+[project.scripts]
+poirot = "poirot.backend.app.cli.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.4",
+]

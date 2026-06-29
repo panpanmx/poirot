@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+class CapabilityMissingError(KeyError):
+    """Raised when a required runtime capability is missing."""
+
+
+@dataclass(frozen=True)
+class CapabilityRegistry:
+    models: dict[str, Any] = field(default_factory=dict)
+    tools: dict[str, Any] = field(default_factory=dict)
+    reporter: Any | None = None
+    artifact_store: Any | None = None
+
+    def get_model(self, name: str) -> Any:
+        try:
+            return self.models[name]
+        except KeyError as exc:
+            raise CapabilityMissingError(f"model not registered: {name}") from exc
+
+    def get_tool(self, name: str) -> Any:
+        try:
+            return self.tools[name]
+        except KeyError as exc:
+            raise CapabilityMissingError(f"tool not registered: {name}") from exc
+
+    def get_reporter(self) -> Any:
+        if self.reporter is None:
+            raise CapabilityMissingError("reporter not registered")
+        return self.reporter
+
+    def get_artifact_store(self) -> Any:
+        if self.artifact_store is None:
+            raise CapabilityMissingError("artifact_store not registered")
+        return self.artifact_store

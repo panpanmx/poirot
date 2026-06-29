@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+from poirot.backend.agents.state.types import ThreadState
+
+
+def create_initial_thread_state(user_input: str) -> ThreadState:
+    return {
+        "messages": [],
+        "user_input": user_input,
+        "observations": [],
+        "sources": [],
+        "citations": [],
+        "artifacts": [],
+        "reflection_items": [],
+        "errors": [],
+        "metadata": {},
+    }

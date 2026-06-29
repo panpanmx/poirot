@@ -1,0 +1,64 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+poirot.egg-info/
+build/
+dist/
+.eggs/
+*.whl
+
+# === Virtual environments ===
+venv/
+.venv/
+env/
+ENV/
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === Locally installed tooling (skills, CLI plugins) ===
+.codex/
+.codex
+.agents/
+
+# === Test / coverage cache ===
+.pytest_cache/
+.pytest-workspace-tmp/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# === Poirot runtime (logs, artifacts, generated output) ===
+.poirot/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Design docs & OpenSpec specs (local only, not for public repo) ===
+design_docs/
+openspec/
+open_spec/
+
+# === Secrets (local only, never commit) ===
+.env
+.env.local
+.env.*.local
+*.secret
+credentials.json
+
+# === Temporary files ===
+*.tmp
+*.bak
+*.log
