@@ -1,4 +1,4 @@
-import shutil
+﻿import shutil
 from pathlib import Path
 from uuid import uuid4
 
@@ -26,6 +26,6 @@ def test_local_artifact_store_saves_final_report() -> None:
 
 
 def _workspace_temp_dir() -> Path:
-    path = Path(".pytest-workspace-tmp") / uuid4().hex
+    path = Path(".poirot/test-logs") / uuid4().hex
     path.mkdir(parents=True, exist_ok=False)
     return path

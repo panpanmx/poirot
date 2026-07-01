@@ -15,7 +15,6 @@ CORE_FIELDS = {
     "citations",
     "artifacts",
     "reflection_items",
-    "draft_report",
     "final_report",
     "errors",
 }
@@ -109,3 +108,68 @@ def _update_same_type(existing: Any, incoming: Any) -> Any:
     if is_dataclass(existing):
         return replace(existing, **asdict(incoming))
     return incoming
+
+
+# ---------------------------------------------------------------------------
+# Public field-level reducers for Annotated[type, reducer] in ThreadState.
+# Used by LangGraph graph-internal state merge. merge_thread_state (above)
+# remains for LeaderAgent outer-layer patch merging (design D7).
+# ---------------------------------------------------------------------------
+
+
+def merge_sources(current: list | None, incoming: list | None) -> list:
+    if incoming is None:
+        return list(current or [])
+    return _merge_sources(current or [], incoming)
+
+
+def merge_citations(current: list | None, incoming: list | None) -> list:
+    if incoming is None:
+        return list(current or [])
+    return _merge_by_attr(current or [], incoming, "citation_id")
+
+
+def merge_artifacts(current: list | None, incoming: list | None) -> list:
+    if incoming is None:
+        return list(current or [])
+    return _merge_by_attr(current or [], incoming, "artifact_id")
+
+
+def merge_reflection_items(current: list | None, incoming: list | None) -> list:
+    if incoming is None:
+        return list(current or [])
+    return _merge_by_attr(current or [], incoming, "item_id")
+
+
+def merge_observations(current: list | None, incoming: list | None) -> list:
+    if incoming is None:
+        return list(current or [])
+    return list(current or []) + list(incoming)
+
+
+def merge_errors(current: list | None, incoming: list | None) -> list:
+    if incoming is None:
+        return list(current or [])
+    return (list(current or []) + list(incoming))[-MAX_ERRORS:]
+
+
+def merge_metadata(current: dict | None, incoming: dict | None) -> dict:
+    if incoming is None:
+        return dict(current or {})
+    return _merge_metadata(current or {}, incoming)
+
+
+def merge_final_report(current: str | None, incoming: str | None) -> str | None:
+    return _merge_final_report(current, incoming)
+
+
+def merge_todos(existing: list | None, new: list | None) -> list | None:
+    """Reducer for todos list.
+
+    Semantics:
+    - new is None (node didn't touch todos) → preserve existing.
+    - new is provided (even empty list) → full replacement (explicit update wins).
+    """
+    if new is None:
+        return existing
+    return new

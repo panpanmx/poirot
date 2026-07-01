@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import json
+import random
+import string
 from dataclasses import replace
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from poirot.backend.agents.config.schema import AppConfig
 from poirot.backend.agents.journal.events import utc_now_iso
 from poirot.backend.agents.journal.run_journal import RunJournal
 from poirot.backend.agents.runtime.run_context import RunContext
 from poirot.backend.agents.runtime.run_record import RunRecord, RunStatus
+
+_CST = timezone(timedelta(hours=8))
+
+
+def _make_run_id() -> str:
+    ts = datetime.now(_CST).strftime("%Y%m%dT%H%M%S")
+    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=4))
+    return f"run-{ts}-{suffix}"
 
 
 class RunManager:
@@ -26,9 +36,14 @@ class RunManager:
         run_id: str | None = None,
         session_id: str | None = None,
         trace_id: str | None = None,
+        model_name: str | None = None,
+        thread_dir: Path | None = None,
     ) -> RunContext:
-        created_run_id = run_id or f"run-{uuid4().hex}"
-        output_dir = Path(self.config.runtime.logs_root) / created_run_id
+        created_run_id = run_id or _make_run_id()
+        if thread_dir is not None:
+            output_dir = thread_dir / "runs" / created_run_id
+        else:
+            output_dir = Path(self.config.runtime.logs_root) / created_run_id
         journal = RunJournal(
             run_id=created_run_id,
             events_path=output_dir / "events.jsonl",
@@ -53,7 +68,7 @@ class RunManager:
             status=RunStatus.PENDING,
             created_at=now,
             updated_at=now,
-            model_name=self.config.models.researcher_model,
+            model_name=model_name or self.config.models.researcher_model,
             metadata={"mode": self.config.runtime.mode},
         )
         self._contexts[created_run_id] = context

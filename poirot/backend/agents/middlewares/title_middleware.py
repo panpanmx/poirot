@@ -1,15 +1,17 @@
+"""TitleMiddleware — after_agent 设置 metadata.title（取自 research_question/user_input，截断 60）。"""
+
 from __future__ import annotations
 
-from poirot.backend.agents.middlewares.base_middleware import BaseMiddleware, MiddlewarePatch
+from typing import Any, override
+
+from langchain.agents.middleware.types import AgentMiddleware
+from langgraph.runtime import Runtime
 
 
-class TitleMiddleware(BaseMiddleware):
-    name = "title"
-    priority = 90
-    hook_points = ("after_agent",)
-    read_fields = ("user_input", "research_question")
-    write_fields = ("metadata",)
-
-    def after_agent(self, state, context):
+class TitleMiddleware(AgentMiddleware):
+    def after_agent(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
         source = state.get("research_question") or state.get("user_input") or "Untitled"
-        return MiddlewarePatch(updates={"metadata": {"title": str(source)[:60]}})
+        return {"metadata": {"title": str(source)[:60]}}
+
+    async def aafter_agent(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
+        return self.after_agent(state, runtime)

@@ -1,7 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Annotated, Any, NotRequired
+
+from langchain.agents import AgentState
+
+from poirot.backend.agents.state.reducers import (
+    merge_artifacts,
+    merge_citations,
+    merge_errors,
+    merge_final_report,
+    merge_metadata,
+    merge_observations,
+    merge_reflection_items,
+    merge_sources,
+    merge_todos,
+)
 
 
 @dataclass(frozen=True)
@@ -89,4 +103,24 @@ class AgentError:
     created_at: str | None = None
 
 
-ThreadState = dict[str, Any]
+class ThreadState(AgentState):
+    """LangGraph state schema for Poirot research threads.
+
+    Extends AgentState (inherits messages with add_messages reducer).
+    Field-level Annotated reducers drive graph-internal state merge.
+    """
+
+    user_input: NotRequired[str]
+    intent: NotRequired[Any]
+    research_question: NotRequired[str]
+    plan: NotRequired[Any]
+    current_step_id: NotRequired[str | None]
+    observations: Annotated[list, merge_observations]
+    sources: Annotated[list, merge_sources]
+    citations: Annotated[list, merge_citations]
+    artifacts: Annotated[list, merge_artifacts]
+    reflection_items: Annotated[list, merge_reflection_items]
+    final_report: Annotated[str | None, merge_final_report]
+    errors: Annotated[list, merge_errors]
+    metadata: Annotated[dict, merge_metadata]
+    todos: Annotated[list | None, merge_todos]

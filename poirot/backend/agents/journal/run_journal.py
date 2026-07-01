@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import json
+import random
+import string
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from poirot.backend.agents.journal.events import RunEvent, utc_now_iso
+
+
+def _make_event_id() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")[:-3]  # ms precision
+    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=4))
+    return f"evt-{ts}-{suffix}"
 
 
 class RunJournal:
@@ -16,12 +24,12 @@ class RunJournal:
     def append(self, event_type: str, payload: dict[str, Any] | None = None) -> RunEvent:
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
         event = RunEvent(
-            event_id=f"evt-{uuid4().hex}",
+            event_id=_make_event_id(),
             run_id=self.run_id,
             event_type=event_type,
             payload=payload or {},
             created_at=utc_now_iso(),
         )
         with self.events_path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
+            file.write(json.dumps(event.to_dict(), ensure_ascii=False, indent=2) + "\n\n")
         return event

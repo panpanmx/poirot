@@ -1,11 +1,22 @@
+"""SummarizationMiddleware — AgentMiddleware no-op 占位（V1）。
+
+后续可接入 langchain.agents.middleware.summarization.SummarizationMiddleware
+或自定义摘要逻辑。当前 before_model 返回 None，不干预。
+"""
+
 from __future__ import annotations
 
-from poirot.backend.agents.middlewares.base_middleware import BaseMiddleware
+from typing import Any, override
+
+from langchain.agents.middleware.types import AgentMiddleware
+from langgraph.runtime import Runtime
 
 
-class SummarizationMiddleware(BaseMiddleware):
-    name = "summarization"
-    priority = 10
-    hook_points = ("before_model",)
-    read_fields = ("messages", "research_question", "plan", "observations")
-    write_fields = ("messages",)
+class SummarizationMiddleware(AgentMiddleware):
+    @override
+    def before_model(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
+        return None
+
+    @override
+    async def abefore_model(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
+        return None

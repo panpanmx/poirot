@@ -30,8 +30,10 @@ def test_markdown_reporter_generates_report_and_journal_event() -> None:
     result = reporter.generate_report(state, context)
 
     assert "What is Poirot?" in result.final_report
-    assert "Poirot is a research agent." in result.draft_report
-    event = json.loads((temp_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert "Poirot is a research agent." in result.final_report
+    content = (temp_dir / "events.jsonl").read_text(encoding="utf-8")
+    blocks = [b for b in content.split("\n\n") if b.strip()]
+    event = json.loads(blocks[0])
     assert event["event_type"] == "report.generated"
 
     shutil.rmtree(temp_dir)
@@ -54,6 +56,6 @@ def _context(temp_dir: Path) -> RunContext:
 
 
 def _workspace_temp_dir() -> Path:
-    path = Path(".pytest-workspace-tmp") / uuid4().hex
+    path = Path(".poirot/test-logs") / uuid4().hex
     path.mkdir(parents=True, exist_ok=False)
     return path

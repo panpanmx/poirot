@@ -92,3 +92,65 @@ def test_errors_are_appended_and_limited() -> None:
     assert len(merged["errors"]) == 100
     assert merged["errors"][0]["error_id"] == "e10"
     assert merged["errors"][-1]["error_id"] == "e109"
+
+
+# --- Field-level reducer tests (for Annotated[type, reducer] in ThreadState) ---
+
+
+def test_field_level_merge_sources_deduplicates() -> None:
+    from poirot.backend.agents.state.reducers import merge_sources
+
+    current = [Source(source_id="s1", url="https://a.test", title="A")]
+    incoming = [
+        Source(source_id="s1", url="https://a.test/updated", title="A2"),
+        Source(source_id="s2", url="https://b.test", title="B"),
+    ]
+    result = merge_sources(current, incoming)
+    assert len(result) == 2
+    assert result[0].title == "A2"
+
+
+def test_field_level_merge_errors_limits() -> None:
+    from poirot.backend.agents.state.reducers import merge_errors
+
+    current = [{"error_id": f"e{i}"} for i in range(95)]
+    incoming = [{"error_id": f"e{i}"} for i in range(95, 110)]
+    result = merge_errors(current, incoming)
+    assert len(result) == 100
+
+
+def test_field_level_merge_observations_appends() -> None:
+    from poirot.backend.agents.state.reducers import merge_observations
+
+    current = ["obs1"]
+    incoming = ["obs2", "obs3"]
+    result = merge_observations(current, incoming)
+    assert result == ["obs1", "obs2", "obs3"]
+
+
+def test_threadstate_extends_agent_state() -> None:
+    from poirot.backend.agents.state.types import ThreadState
+
+    # TypedDict doesn't support issubclass at runtime; verify field inheritance
+    # by collecting annotations from the MRO.
+    annotations: dict = {}
+    for cls in ThreadState.__mro__:
+        annotations.update(getattr(cls, "__annotations__", {}))
+    assert "messages" in annotations  # inherited from AgentState
+    assert "sources" in annotations  # declared in ThreadState
+
+
+def test_threadstate_as_create_agent_state_schema() -> None:
+    from unittest.mock import MagicMock
+
+    from langchain.agents import create_agent
+    from langchain_core.language_models import BaseChatModel
+    from langchain_core.messages import AIMessage
+
+    from poirot.backend.agents.state.types import ThreadState
+
+    m = MagicMock(spec=BaseChatModel)
+    m.bind_tools.return_value = m
+    m.invoke.return_value = AIMessage(content="ok")
+    graph = create_agent(model=m, tools=[], state_schema=ThreadState)
+    assert graph.__class__.__name__ == "CompiledStateGraph"

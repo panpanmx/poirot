@@ -1,4 +1,4 @@
-import json
+﻿import json
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -15,9 +15,10 @@ def test_run_journal_appends_jsonl_events() -> None:
 
     assert isinstance(event, RunEvent)
     assert event.run_id == "run-1"
-    rows = (temp_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
-    assert len(rows) == 1
-    payload = json.loads(rows[0])
+    content = (temp_dir / "events.jsonl").read_text(encoding="utf-8")
+    blocks = [b for b in content.split("\n\n") if b.strip()]
+    assert len(blocks) == 1
+    payload = json.loads(blocks[0])
     assert payload["event_type"] == "run.started"
     assert payload["payload"] == {"mode": "general"}
 
@@ -25,6 +26,6 @@ def test_run_journal_appends_jsonl_events() -> None:
 
 
 def _workspace_temp_dir() -> Path:
-    path = Path(".pytest-workspace-tmp") / uuid4().hex
+    path = Path(".poirot/test-logs") / uuid4().hex
     path.mkdir(parents=True, exist_ok=False)
     return path

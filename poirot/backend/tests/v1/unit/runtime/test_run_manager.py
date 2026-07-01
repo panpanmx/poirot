@@ -1,4 +1,4 @@
-import json
+﻿import json
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -52,8 +52,9 @@ def test_run_manager_updates_lifecycle_and_journal() -> None:
     assert running.status == RunStatus.RUNNING
     assert success.status == RunStatus.SUCCESS
     assert success.total_tokens == 12
-    events = context.events_path.read_text(encoding="utf-8").splitlines()
-    assert [json.loads(row)["event_type"] for row in events] == [
+    events_content = context.events_path.read_text(encoding="utf-8")
+    blocks = [b for b in events_content.split("\n\n") if b.strip()]
+    assert [json.loads(b)["event_type"] for b in blocks] == [
         "run.started",
         "run.finished",
     ]
@@ -62,6 +63,6 @@ def test_run_manager_updates_lifecycle_and_journal() -> None:
 
 
 def _workspace_temp_dir() -> Path:
-    path = Path(".pytest-workspace-tmp") / uuid4().hex
+    path = Path(".poirot/test-logs") / uuid4().hex
     path.mkdir(parents=True, exist_ok=False)
     return path

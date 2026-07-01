@@ -1,4 +1,4 @@
-import json
+﻿import json
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -12,13 +12,15 @@ def test_run_journal_writes_event_jsonl() -> None:
 
     journal.append("run.started", {"mode": "general"})
 
-    rows = (temp_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
-    assert json.loads(rows[0])["event_type"] == "run.started"
+    content = (temp_dir / "events.jsonl").read_text(encoding="utf-8")
+    # Events are now pretty-printed JSON blocks separated by blank lines.
+    blocks = [b for b in content.split("\n\n") if b.strip()]
+    assert json.loads(blocks[0])["event_type"] == "run.started"
 
     shutil.rmtree(temp_dir)
 
 
 def _workspace_temp_dir() -> Path:
-    path = Path(".pytest-workspace-tmp") / uuid4().hex
+    path = Path(".poirot/test-logs") / uuid4().hex
     path.mkdir(parents=True, exist_ok=False)
     return path

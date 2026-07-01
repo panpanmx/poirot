@@ -1,26 +1,40 @@
+from unittest.mock import MagicMock
+
 import pytest
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.tools import BaseTool
 
 from poirot.backend.agents.capabilities.registry import (
     CapabilityMissingError,
     CapabilityRegistry,
 )
-from poirot.backend.agents.capabilities.models.base import FakeModel
-from poirot.backend.agents.tools.base import FakeSearchTool
+
+
+def _mock_model(name: str = "researcher") -> BaseChatModel:
+    m = MagicMock(spec=BaseChatModel)
+    m.name = name
+    return m
+
+
+def _mock_tool(name: str = "web_search_mcp") -> BaseTool:
+    t = MagicMock(spec=BaseTool)
+    t.name = name
+    return t
 
 
 def test_registry_returns_registered_capabilities() -> None:
+    model = _mock_model("researcher")
+    tool = _mock_tool("web_search_mcp")
     registry = CapabilityRegistry(
-        models={
-            "researcher": FakeModel(name="researcher"),
-            "reporter": FakeModel(name="reporter"),
-        },
-        tools={"web_search_mcp": FakeSearchTool()},
+        models={"researcher": model, "reporter": _mock_model("reporter")},
+        tools={"web_search_mcp": tool},
         reporter=object(),
         artifact_store=object(),
     )
 
-    assert registry.get_model("researcher").name == "researcher"
-    assert registry.get_tool("web_search_mcp").name == "web_search_mcp"
+    assert registry.get_model("researcher") is model
+    assert registry.get_tool("web_search_mcp") is tool
     assert registry.get_reporter() is not None
     assert registry.get_artifact_store() is not None
 
