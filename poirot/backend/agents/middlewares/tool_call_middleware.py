@@ -118,6 +118,9 @@ def _is_failure(result: Any) -> tuple[str, str] | None:
     biz = _classify_business_failure(text)
     if biz:
         return biz, _reason_for(biz)
+    # 检测工具返回的 error JSON（如 ddg {"error": "Search failed: ..."}）
+    if '"error"' in text and ('search failed' in text.lower() or 'not installed' in text.lower() or 'failed' in text.lower()):
+        return "unknown", "工具返回错误"
     return None
 
 
@@ -267,6 +270,16 @@ class ToolCallMiddleware(AgentMiddleware):
             )
             return Command(update={"messages": [failure_msg]})
 
+        # F8.5：硬预算短路——总调用数达上限，拒绝所有后续工具，强制模型收尾走 Reporter
+        if _total_calls(errors) >= _HARD_BUDGET:
+            self._emit(request.runtime, "tool.budget_exhausted", {"count": _total_calls(errors), "max": _HARD_BUDGET})
+            failure_msg = ToolMessage(
+                content=f"⚠️ 工具调用总数已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
+                tool_call_id=request.tool_call.get("id", ""),
+                status="error",
+            )
+            return Command(update={"messages": [failure_msg]})
+
         try:
             result = handler(request)
             return self._process_result(request, result, request.runtime, exc=None)
@@ -285,6 +298,16 @@ class ToolCallMiddleware(AgentMiddleware):
             self._emit(request.runtime, "tool.blocked", {"tool": tool_name, "reason": "retry_budget_exhausted"})
             failure_msg = ToolMessage(
                 content=f"⚠️ 工具 {tool_name} 已达重试上限（{_RETRY_BUDGET}），已被禁用，请换方法或收尾。",
+                tool_call_id=request.tool_call.get("id", ""),
+                status="error",
+            )
+            return Command(update={"messages": [failure_msg]})
+
+        # F8.5：硬预算短路
+        if _total_calls(errors) >= _HARD_BUDGET:
+            self._emit(request.runtime, "tool.budget_exhausted", {"count": _total_calls(errors), "max": _HARD_BUDGET})
+            failure_msg = ToolMessage(
+                content=f"⚠️ 工具调用总数已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
                 tool_call_id=request.tool_call.get("id", ""),
                 status="error",
             )
