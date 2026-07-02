@@ -47,7 +47,10 @@ class LeaderAgent:
                 "output_dir": str(run_context.output_dir),
                 "plan_enabled": run_context.config.runtime.plan_enabled,
                 "timezone": run_context.config.runtime.timezone,
-            }
+                "model": run_context.config.models.researcher_model,
+            },
+            # F8.5：调高 recursion_limit 让硬预算（30）先生效优雅退出，不靠 recursion limit 硬截断。
+            "recursion_limit": 50,
         }
 
         # MCP tools are async-only StructuredTool; graph must run in async mode.

@@ -18,7 +18,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.runtime import Runtime
 from langgraph.types import Command
 
-from poirot.backend.agents.state.types import AgentError, Observation, Source, ThreadState
+from poirot.backend.agents.state.types import Observation, Source, ThreadState
 
 # 证据类工具白名单（D9：MVP 手维护）。非白名单工具直接 passthrough。
 _EVIDENCE_TOOLS: frozenset[str] = frozenset({
@@ -97,6 +97,28 @@ def _make_observation(
     )
 
 
+def _resolve_step_id(state: Any) -> str | None:
+    """F4：取 current_step_id；无则从 todos 派生兜底（首个 in_progress 或 todo-0），避免 None。
+
+    首轮模型可能直接调搜索（未先 write_todos）→ current_step_id 缺失 → step_id=None
+    会导致 Reflection 覆盖度误判。兜底关联到最近 in_progress todo 或 todo-0。
+    """
+    if not isinstance(state, dict):
+        return None
+    step_id = state.get("current_step_id")
+    if step_id:
+        return step_id
+    todos = state.get("todos") or []
+    if not todos:
+        return None
+    # 优先首个 in_progress todo 的 index
+    for idx, t in enumerate(todos):
+        if isinstance(t, dict) and t.get("status") == "in_progress":
+            return f"todo-{idx}"
+    # 无 in_progress 则兜底 todo-0
+    return "todo-0"
+
+
 class EvidenceMiddleware(AgentMiddleware):
     """拦截证据类工具调用，把结果结构化沉淀进 observations/sources/errors。
 
@@ -115,29 +137,14 @@ class EvidenceMiddleware(AgentMiddleware):
         if tool_name not in _EVIDENCE_TOOLS:
             return handler(request)
 
-        try:
-            result = handler(request)
-        except Exception as exc:
-            err = AgentError(
-                error_id=_make_id("err"),
-                stage="tool",
-                message=f"{tool_name}: {exc}",
-                related_refs=(request.tool_call.get("id", ""),),
-                created_at=_now_iso(),
-            )
-            failure_msg = ToolMessage(
-                content=f"⚠️ 工具 {tool_name} 调用失败：{exc}",
-                tool_call_id=request.tool_call.get("id", ""),
-                status="error",
-            )
-            return Command(update={"errors": [err], "messages": [failure_msg]})
-
+        # FD17：Evidence 只管证据抽取（成功时）；失败分类/账本归 ToolCallMiddleware（外层捕获异常）
+        result = handler(request)
         if not isinstance(result, ToolMessage):
             return result
 
         sources = _extract_sources(tool_name, result)
         state = request.state
-        step_id = state.get("current_step_id") if isinstance(state, dict) else None
+        step_id = _resolve_step_id(state)
         obs = _make_observation(tool_name, result, sources, step_id)
         return Command(update={
             "observations": [obs],
@@ -155,29 +162,13 @@ class EvidenceMiddleware(AgentMiddleware):
         if tool_name not in _EVIDENCE_TOOLS:
             return await handler(request)
 
-        try:
-            result = await handler(request)
-        except Exception as exc:
-            err = AgentError(
-                error_id=_make_id("err"),
-                stage="tool",
-                message=f"{tool_name}: {exc}",
-                related_refs=(request.tool_call.get("id", ""),),
-                created_at=_now_iso(),
-            )
-            failure_msg = ToolMessage(
-                content=f"⚠️ 工具 {tool_name} 调用失败：{exc}",
-                tool_call_id=request.tool_call.get("id", ""),
-                status="error",
-            )
-            return Command(update={"errors": [err], "messages": [failure_msg]})
-
+        result = await handler(request)
         if not isinstance(result, ToolMessage):
             return result
 
         sources = _extract_sources(tool_name, result)
         state = request.state
-        step_id = state.get("current_step_id") if isinstance(state, dict) else None
+        step_id = _resolve_step_id(state)
         obs = _make_observation(tool_name, result, sources, step_id)
         return Command(update={
             "observations": [obs],

@@ -74,12 +74,20 @@ def _format_sources(sources: list[Any]) -> str:
 
 
 def _format_errors(errors: list[Any]) -> str:
-    if not errors:
+    """F8.6：过滤 kind=success，只展示 failure；失败多则占比大（详细列出）。"""
+    failures = [e for e in errors if _field(e, "kind") != "success"]
+    if not failures:
         return ""
-    lines = ["以下工具调用失败，对应信息未能获取："]
-    for err in errors:
-        msg = _field(err, "message") or str(err)
-        lines.append(f"- {msg}")
+    lines = [f"以下工具调用失败（共 {len(failures)} 次），对应信息未能获取："]
+    # 按 error_type 汇总
+    by_type: dict[str, list[tuple[str, str]]] = {}  # et -> [(tool_name, reason)]
+    for err in failures:
+        et = _field(err, "error_type") or "unknown"
+        by_type.setdefault(et, []).append((_field(err, "tool_name") or "unknown", _field(err, "reason") or ""))
+    for et, entries in by_type.items():
+        tools = sorted({t for t, _ in entries})
+        reason = next((r for _, r in entries if r), "")
+        lines.append(f"- [{et}] {reason}：涉及工具 {', '.join(tools)}")
     return "\n".join(lines)
 
 

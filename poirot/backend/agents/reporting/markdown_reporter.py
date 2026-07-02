@@ -29,13 +29,7 @@ class MarkdownReporter:
             body = ai_answer or "No answer collected."
             final_report = f"# {question}\n\n{body}"
 
-        run_context.journal.append(
-            "report.generated",
-            {
-                "title": str(question),
-                "mode": run_context.config.runtime.mode,
-            },
-        )
+        # F1: report.generated 事件仅由 agent.py（LeaderAgent.run）发出，reporter 只产文本。
         return ReportResult(final_report=final_report)
 
 

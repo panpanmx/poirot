@@ -16,7 +16,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
 from poirot.backend.agents.middlewares import _jump_budget
-from poirot.backend.agents.middlewares.todo_middleware import _has_tool_call_intent
+from poirot.backend.agents.middlewares.run_journal_middleware import _get_runtime_value
+from poirot.backend.agents.middlewares.todo_middleware import _has_persistent_failures, _has_tool_call_intent
 from poirot.backend.agents.state.types import ReflectionItem, ThreadState
 
 
@@ -44,31 +45,49 @@ def _step_id(obs: Any) -> str | None:
     return getattr(obs, "step_id", None)
 
 
+def _field(item: Any, name: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(name)
+    return getattr(item, name, None)
+
+
 class SufficiencyStrategy:
     """L1 充分性守门：todos 全完成时，检查每步是否有 observation 覆盖。
 
-    未完成 todo 交给 Todo Layer 2（形式完成），Reflection 只在 todo 全完成时
-    判实质充分——避免与 Todo 同轮双跳。
+    F7：覆盖度判断交 LLM 评估（若提供 model），否则保持"每步有无 observation"判断（MVP 过渡）。
+    未完成 todo 交给 Todo Layer 2，Reflection 只在 todo 全完成时判实质充分。
     """
+
+    def __init__(self, llm: Any = None) -> None:
+        self._llm = llm
 
     def reflect(self, state: dict[str, Any], runtime: Runtime) -> ReflectionAction:
         todos = state.get("todos") or []
         if todos and not all(t.get("status") == "completed" for t in todos):
             return ReflectionAction(verdict="pass", reflection_items=[], plan=None, guidance="", rollback_to="")
 
+        # F8.4：失败超阈放宽
+        if _has_persistent_failures(state):
+            return ReflectionAction(verdict="pass", reflection_items=[], plan=None, guidance="", rollback_to="")
+
         observations = state.get("observations") or []
         if not observations:
             return ReflectionAction(verdict="pass", reflection_items=[], plan=None, guidance="", rollback_to="")
 
+        # F7：有 LLM 则交模型评估充分性；否则保持每步覆盖度判断（MVP 过渡）
+        if self._llm is not None:
+            return self._llm_evaluate(state, todos, observations)
+
+        return self._rule_based_check(todos, observations)
+
+    def _rule_based_check(self, todos: list, observations: list) -> ReflectionAction:
+        """MVP 过渡：每步有无 observation 覆盖度判断。"""
         covered = {_step_id(o) for o in observations if _step_id(o)}
         missing = [f"todo-{i}" for i, _ in enumerate(todos) if f"todo-{i}" not in covered]
         if not missing:
             return ReflectionAction(verdict="pass", reflection_items=[], plan=None, guidance="", rollback_to="")
-
         item = ReflectionItem(
-            item_id=_make_reflection_id(),
-            scope="run",
-            kind="gap",
+            item_id=_make_reflection_id(), scope="run", kind="gap",
             question=f"以下步骤标记完成但缺少证据覆盖：{', '.join(missing)}",
             related_refs=tuple(missing),
         )
@@ -80,14 +99,64 @@ class SufficiencyStrategy:
         )
         return ReflectionAction(verdict="continue", reflection_items=[item], plan=None, guidance=guidance, rollback_to="")
 
+    def _llm_evaluate(self, state: dict[str, Any], todos: list, observations: list) -> ReflectionAction:
+        """F7：LLM 评估充分性——简单问题不误判浅覆盖，复杂问题证据不足判 continue。"""
+        question = state.get("research_question") or state.get("user_input") or ""
+        todos_desc = "\n".join(f"- {t.get('content', '')}" for t in todos) if todos else "（无 todo）"
+        obs_desc = "\n".join(
+            f"- [{_step_id(o) or '-'}] {(_field(o, 'content') or '')[:200]}"
+            for o in observations[:10]
+        )
+        prompt = (
+            "你是研究充分性评估者。判断当前证据是否充分支撑研究问题。\n\n"
+            f"研究问题：{question}\n\n"
+            f"研究步骤（todos）：\n{todos_desc}\n\n"
+            f"已收集证据（observations 概要）：\n{obs_desc}\n\n"
+            "判断标准：简单问题少量切题证据即充分；复杂问题需足够证据。"
+            "只回复 JSON：{\"sufficient\": true/false, \"reason\": \"简短理由\"}"
+        )
+        try:
+            from langchain_core.messages import HumanMessage
+            resp = self._llm.invoke([HumanMessage(content=prompt)])
+            content = getattr(resp, "content", str(resp))
+            import json
+            # 容错解析 JSON
+            start = content.find("{")
+            end = content.rfind("}") + 1
+            if start >= 0 and end > start:
+                data = json.loads(content[start:end])
+                if data.get("sufficient", True):
+                    return ReflectionAction(verdict="pass", reflection_items=[], plan=None, guidance="", rollback_to="")
+        except Exception:
+            pass  # LLM 评估失败则回退规则判断
+        # 判定为不充分或解析失败 → continue
+        item = ReflectionItem(
+            item_id=_make_reflection_id(), scope="run", kind="gap",
+            question="LLM 评估证据不足以支撑研究结论",
+            related_refs=(),
+        )
+        guidance = (
+            "<system_reminder>\n"
+            "LLM 评估认为当前证据不足以充分支撑研究结论，请补充搜索/调研后再给出最终答案。\n"
+            "</system_reminder>"
+        )
+        return ReflectionAction(verdict="continue", reflection_items=[item], plan=None, guidance=guidance, rollback_to="")
+
 
 class ReflectionMiddleware(AgentMiddleware):
     """外壳：管触发时机 + jump 预算；判断逻辑委托给 ReflectionStrategy。"""
 
     state_schema = ThreadState  # type: ignore[assignment]
 
-    def __init__(self, strategy: ReflectionStrategy | None = None) -> None:
-        self._strategy = strategy or SufficiencyStrategy()
+    def __init__(self, strategy: ReflectionStrategy | None = None, llm: Any = None) -> None:
+        self._strategy = strategy or SufficiencyStrategy(llm=llm)
+
+    @staticmethod
+    def _emit(runtime: Runtime, event_type: str, payload: dict[str, Any]) -> None:
+        """F3: 发 reflection 事件到 journal（经 _get_runtime_value 取 journal）。"""
+        journal = _get_runtime_value(runtime, "journal", None)
+        if journal is not None:
+            journal.append(event_type, payload)
 
     @hook_config(can_jump_to=["model"])
     @override
@@ -101,9 +170,18 @@ class ReflectionMiddleware(AgentMiddleware):
         if action["verdict"] == "pass":
             return None
 
-        # 共享 jump 预算门（与 Todo 合计 ≤3，D6）
+        # F3: 共享 jump 预算门（与 Todo 合计 ≤3）；预算耗尽放行时发事件。
         if not _jump_budget.try_consume(runtime):
+            self._emit(runtime, "reflection.budget_exhausted", {"max": _jump_budget._MAX_TOTAL_JUMPS})
             return None
+
+        # F3: 触发 jump 时发 reflection.fired 事件。
+        gap_steps = [getattr(it, "related_refs", ()) for it in action["reflection_items"]]
+        self._emit(runtime, "reflection.fired", {
+            "verdict": action["verdict"],
+            "gap_steps": gap_steps,
+            "remaining_budget": _jump_budget.remaining(runtime),
+        })
 
         update: dict[str, Any] = {"reflection_items": action["reflection_items"]}
         if action["guidance"]:

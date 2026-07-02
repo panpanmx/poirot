@@ -101,6 +101,12 @@ class AgentError:
     message: str
     related_refs: tuple[str, ...] = field(default_factory=tuple)
     created_at: str | None = None
+    # F8.1：errors 升级为工具调用账本，扩展字段（带默认值兼容既有构造）
+    kind: str = "failure"           # "failure" / "success"
+    tool_name: str = ""
+    attempt: int = 0                # 该 tool 连续失败次（成功归 0）
+    error_type: str = ""            # F5 分类
+    reason: str = ""                # F8.2 原因模板
 
 
 class ThreadState(AgentState):

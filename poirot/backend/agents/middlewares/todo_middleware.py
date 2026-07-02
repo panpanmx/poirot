@@ -99,6 +99,29 @@ def _has_tool_call_intent(message: AIMessage) -> bool:
     return response_metadata.get("finish_reason") in {"tool_calls", "function_call"}
 
 
+def _has_persistent_failures(state: Any) -> bool:
+    """F8.4：判断 errors 是否有 tool 持续失败超阈（attempt≥3 被禁）。
+
+    从 state.errors 派生：任一 tool 最新条目 attempt≥3 → 持续失败，放行退出。
+    """
+    if not isinstance(state, dict):
+        return False
+    errors = state.get("errors") or []
+    latest: dict[str, int] = {}
+    for err in errors:
+        tn = _err_field(err, "tool_name")
+        att = _err_field(err, "attempt")
+        if tn and att is not None:
+            latest[tn] = int(att)
+    return any(att >= 3 for att in latest.values())
+
+
+def _err_field(item: Any, name: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(name)
+    return getattr(item, name, None)
+
+
 class TodoMiddleware(TodoListMiddleware):
     """Extends TodoListMiddleware with context-loss detection and completion enforcement.
 
@@ -251,6 +274,10 @@ class TodoMiddleware(TodoListMiddleware):
         # 4. Allow exit when all todos are completed or none exist.
         todos: list[Todo] = state.get("todos") or []  # type: ignore[assignment]
         if not todos or all(t.get("status") == "completed" for t in todos):
+            return step_update or None
+
+        # 4b. F8.4：失败超阈放行——工具持续失败时不强制 all-completed，让任务跑到结尾产带缺口报告。
+        if _has_persistent_failures(state):
             return step_update or None
 
         # 5. Enforce reminder cap to prevent infinite loops.

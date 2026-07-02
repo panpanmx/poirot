@@ -11,8 +11,8 @@ from typing import Any, override
 
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
-from langchain_core.outputs import ChatResult
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import PrivateAttr
 
 
@@ -45,7 +45,7 @@ def _should_fallback(exc: Exception) -> bool:
 class FallbackChatModel(BaseChatModel):
     """按链顺序调用，瞬时 API 失败降级到下一个，记忆活跃 provider。"""
 
-    models: list[BaseChatModel]
+    models: list[Any]  # BaseChatModel 或其 bind_tools 后的 RunnableBinding
     provider_names: list[str] = []
     _active: int = PrivateAttr(default=0)
 
@@ -62,9 +62,10 @@ class FallbackChatModel(BaseChatModel):
         for offset in range(n):
             idx = (self._active + offset) % n
             try:
-                result = self.models[idx]._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
-                self._active = idx  # 记忆工作正常的 provider
-                return result
+                # 用 invoke 兼容 BaseChatModel 与 bind_tools 后的 RunnableBinding
+                ai: AIMessage = self.models[idx].invoke(messages, stop=stop, **kwargs)
+                self._active = idx
+                return ChatResult(generations=[ChatGeneration(message=ai)])
             except Exception as exc:
                 if not _should_fallback(exc):
                     raise
@@ -86,9 +87,9 @@ class FallbackChatModel(BaseChatModel):
         for offset in range(n):
             idx = (self._active + offset) % n
             try:
-                result = await self.models[idx]._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+                ai: AIMessage = await self.models[idx].ainvoke(messages, stop=stop, **kwargs)
                 self._active = idx
-                return result
+                return ChatResult(generations=[ChatGeneration(message=ai)])
             except Exception as exc:
                 if not _should_fallback(exc):
                     raise

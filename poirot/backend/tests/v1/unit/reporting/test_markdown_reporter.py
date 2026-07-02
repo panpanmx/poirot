@@ -31,10 +31,8 @@ def test_markdown_reporter_generates_report_and_journal_event() -> None:
 
     assert "What is Poirot?" in result.final_report
     assert "Poirot is a research agent." in result.final_report
-    content = (temp_dir / "events.jsonl").read_text(encoding="utf-8")
-    blocks = [b for b in content.split("\n\n") if b.strip()]
-    event = json.loads(blocks[0])
-    assert event["event_type"] == "report.generated"
+    # F1: reporter 不再发 report.generated 事件（归 agent.py），不写 events.jsonl。
+    assert not (temp_dir / "events.jsonl").exists()
 
     shutil.rmtree(temp_dir)
 

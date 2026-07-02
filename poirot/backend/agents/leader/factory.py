@@ -21,17 +21,19 @@ from poirot.backend.agents.state.types import ThreadState
 
 
 def _build_middlewares(mode: str, model: BaseChatModel | None = None) -> list:
+    # FD18：ToolCallMiddleware 在 general/expert 移到最外层（Evidence 之前）管成败账本。
+    # fast 模式不挂 ToolCall/Evidence/Reflection/Todo/Report，保持单轮轻量。
     middlewares = [
         SummarizationMiddleware(),
         SystemContextMiddleware(),
-        ToolCallMiddleware(),
         TitleMiddleware(),
         RunJournalMiddleware(),
     ]
     if mode in ("general", "expert"):
-        middlewares.insert(2, TodoMiddleware())
-        middlewares.insert(3, EvidenceMiddleware())
-        middlewares.insert(4, ReflectionMiddleware())
+        middlewares.insert(2, ToolCallMiddleware())   # 最外层 wrap_tool_call
+        middlewares.insert(3, TodoMiddleware())
+        middlewares.insert(4, EvidenceMiddleware())
+        middlewares.insert(5, ReflectionMiddleware(llm=model))
         if model is not None:
             middlewares.append(ReportMiddleware(model))
     return middlewares

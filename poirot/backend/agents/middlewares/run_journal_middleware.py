@@ -16,34 +16,52 @@ from langgraph.runtime import Runtime
 
 
 def _get_runtime_value(runtime: Any, key: str, default: Any = None) -> Any:
-    """三路径提取 runtime configurable 值（兼容测试 SimpleNamespace + LangGraph ≥1.1.9）。"""
-    if runtime is None:
-        return default
-    # Path 1: runtime.context（dict 或对象）—— 测试与旧版 LangGraph
-    ctx = getattr(runtime, "context", None)
-    if ctx is not None:
-        if isinstance(ctx, dict):
-            if key in ctx:
-                return ctx[key]
-        else:
-            val = getattr(ctx, key, None)
-            if val is not None:
-                return val
-    # Path 2: runtime.get_configurable()—— LangGraph runtime API
-    get_cfg = getattr(runtime, "get_configurable", None)
-    if callable(get_cfg):
-        try:
-            cfg = get_cfg()
-            if cfg and isinstance(cfg, dict) and key in cfg:
-                return cfg[key]
-        except Exception:
-            pass
-    # Path 3: runtime.config["configurable"]—— 兜底
-    config = getattr(runtime, "config", None)
-    if isinstance(config, dict):
-        configurable = config.get("configurable", {})
-        if isinstance(configurable, dict) and key in configurable:
-            return configurable[key]
+    """提取 runtime configurable 值。
+
+    路径（按优先级）：
+    1. runtime.context（dict/对象）—— 有 context_schema 时
+    2. langgraph.config.get_config()["configurable"]—— create_agent 标准 hook 内访问 config 的方式
+    3. runtime.get_configurable()—— LangGraph runtime API（如有）
+    4. runtime.config["configurable"]—— 兜底
+    """
+    if runtime is not None:
+        # Path 1: runtime.context
+        ctx = getattr(runtime, "context", None)
+        if ctx is not None:
+            if isinstance(ctx, dict):
+                if key in ctx:
+                    return ctx[key]
+            else:
+                val = getattr(ctx, key, None)
+                if val is not None:
+                    return val
+    # Path 2: get_config() —— create_agent hook 内取 configurable 的标准方式（F2 修复）
+    try:
+        from langgraph.config import get_config
+
+        config = get_config()
+        if config:
+            configurable = config.get("configurable", {})
+            if isinstance(configurable, dict) and key in configurable:
+                return configurable[key]
+    except Exception:
+        pass
+    # Path 3: runtime.get_configurable()
+    if runtime is not None:
+        get_cfg = getattr(runtime, "get_configurable", None)
+        if callable(get_cfg):
+            try:
+                cfg = get_cfg()
+                if cfg and isinstance(cfg, dict) and key in cfg:
+                    return cfg[key]
+            except Exception:
+                pass
+        # Path 4: runtime.config["configurable"]
+        config = getattr(runtime, "config", None)
+        if isinstance(config, dict):
+            configurable = config.get("configurable", {})
+            if isinstance(configurable, dict) and key in configurable:
+                return configurable[key]
     return default
 
 
@@ -70,6 +88,9 @@ class RunJournalMiddleware(AgentMiddleware):
     def _run_id(self, runtime: Runtime) -> Any:
         return _get_runtime_value(runtime, "run_id", None)
 
+    def _model_name(self, runtime: Runtime) -> str:
+        return str(_get_runtime_value(runtime, "model", "") or "")
+
     @override
     def before_agent(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
         journal = self._journal(runtime)
@@ -88,14 +109,14 @@ class RunJournalMiddleware(AgentMiddleware):
     def before_model(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
         journal = self._journal(runtime)
         if journal is not None:
-            journal.append("llm.request", {"run_id": self._run_id(runtime)})
+            journal.append("llm.request", {"run_id": self._run_id(runtime), "model": self._model_name(runtime)})
         return None
 
     @override
     def after_model(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
         journal = self._journal(runtime)
         if journal is not None:
-            journal.append("llm.response", {"run_id": self._run_id(runtime)})
+            journal.append("llm.response", {"run_id": self._run_id(runtime), "model": self._model_name(runtime)})
         return None
 
     @override
