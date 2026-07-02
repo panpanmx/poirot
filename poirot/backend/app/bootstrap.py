@@ -117,13 +117,28 @@ def bootstrap_runtime(
         "provider": provider or "default",
     })
 
-    # LLM construction — logged to thread journal.
-    provider_config = select_provider_config(provider=provider, model=model)
-    chat_model = _build_chat_model(provider_config)
-    thread_journal.append("llm.constructed", {
-        "model": provider_config.model,
-        "provider": provider_config.provider,
-    })
+    # LLM construction — 角色化智能路由（deepseek 兜底），或 CLI --provider 强制单 provider。
+    from poirot.backend.agents.config.model_router import ModelRouter
+
+    router = ModelRouter()
+    if provider:
+        researcher_model = router.build_single(provider, model)
+        reporter_model = researcher_model
+        thread_journal.append("llm.constructed", {
+            "mode": "single",
+            "provider": provider,
+            "model": model or "default",
+        })
+        researcher_model_name = model or provider
+    else:
+        researcher_model = router.build_model("researcher")
+        reporter_model = router.build_model("reporter")
+        thread_journal.append("llm.constructed", {
+            "mode": "routed",
+            "researcher_chain": router.chain_names("researcher"),
+            "reporter_chain": router.chain_names("reporter"),
+        })
+        researcher_model_name = "routed:" + ",".join(router.chain_names("researcher"))
 
     # MCP tool loading — logged to thread journal (success or failure).
     tools: dict[str, Any] = {}
@@ -150,7 +165,7 @@ def bootstrap_runtime(
 
     # Registry + LeaderAgent — built ONCE per thread, reused across runs.
     registry = CapabilityRegistry(
-        models={"researcher": chat_model, "reporter": chat_model},
+        models={"researcher": researcher_model, "reporter": reporter_model},
         tools=tools,
         reporter=MarkdownReporter(),
         artifact_store=LocalArtifactStore(),
@@ -165,7 +180,7 @@ def bootstrap_runtime(
         config=config,
         capability_registry=registry,
         run_manager=RunManager(config),
-        researcher_model_name=provider_config.model,
+        researcher_model_name=researcher_model_name,
         thread_id=thread_id,
         thread_dir=thread_dir,
         thread_journal=thread_journal,
