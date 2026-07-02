@@ -10,7 +10,13 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-dotenv>=1.0.0",
     "langchain-mcp-adapters>=0.1.0",
+    "rich>=13.0.0",
+    "prompt_toolkit>=3.0.0",
+    "ddgs>=9.0.0",
 ]
+
+[project.scripts]
+poirot = "poirot.backend.app.cli.main:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -23,9 +29,6 @@ include = ["poirot*"]
 dev = [
     "pytest>=7.4.4",
 ]
-
-[project.scripts]
-poirot = "poirot.backend.app.cli.main:main"
 
 [dependency-groups]
 dev = [

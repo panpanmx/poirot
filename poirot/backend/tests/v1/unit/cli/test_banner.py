@@ -1,22 +1,22 @@
 from poirot.backend.app.cli.banner import render_banner
 
 
-def test_banner_uses_macintosh_gradient_pixel_style() -> None:
+def test_banner_uses_cold_gradient_pixel_style() -> None:
     banner = render_banner("POIROT")
 
-    # Truecolor top gradient #FFB347 = (255, 179, 71)
-    assert "\x1b[38;2;255;179;71m" in banner
-    # Truecolor bottom gradient #FFD700 = (255, 215, 0)
-    assert "\x1b[38;2;255;215;0m" in banner
+    # render_banner 返回 rich Text 对象
+    text_str = str(banner)
+
     # Box-drawing pixel font
-    assert "█" in banner
+    assert "█" in text_str
     # Version line
-    assert "v1.0.0" in banner
-    # Tagline rendered in italic
-    assert "The little grey cells are working..." in banner
-    assert "\x1b[3m" in banner
-    # Decorations removed: no separators, smiley, or magnifier
-    assert "♦" not in banner
-    assert "★" not in banner
-    assert ":-)" not in banner
-    assert "( * )" not in banner
+    assert "v1.0.0" in text_str
+    # Tagline
+    assert "The little grey cells are working..." in text_str
+    # 冷色系渐变（不再用暖色 #FFB347）
+    assert "\x1b[38;2;255;179;71m" not in text_str  # 无手写 ANSI 码
+    # 装饰移除
+    assert "♦" not in text_str
+    assert "★" not in text_str
+    assert ":-)" not in text_str
+    assert "( * )" not in text_str

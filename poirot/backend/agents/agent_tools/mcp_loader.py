@@ -32,7 +32,15 @@ def load_mcp_tools() -> list[BaseTool]:
     if _mcp_tools_cache is not None:
         return _mcp_tools_cache
     try:
-        _mcp_tools_cache = asyncio.run(load_mcp_tools_async())
+        try:
+            asyncio.get_running_loop()
+            # 已在 async 上下文——新线程跑独立 event loop 加载 MCP
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                _mcp_tools_cache = pool.submit(asyncio.run, load_mcp_tools_async()).result()
+        except RuntimeError:
+            # 同步上下文——直接 asyncio.run
+            _mcp_tools_cache = asyncio.run(load_mcp_tools_async())
     except Exception as exc:
         print(
             f"[Poirot] MCP tool loading failed: {exc}",
