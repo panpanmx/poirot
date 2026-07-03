@@ -27,10 +27,11 @@ def test_default_sets_pending_false() -> None:
     assert state["pending_expert_mode"] is False
 
 
-def test_report_no_topic_sets_pending_none_topic() -> None:
+def test_report_no_topic_sets_pending_empty_string() -> None:
+    """/report 无 topic → pending_report=""（空字符串表无 topic，区别于 None 未设）。"""
     state = _make_state()
     handle_command("/report", _make_console(), None, state, runtime=None)
-    assert state["pending_report"] is None
+    assert state["pending_report"] == ""
 
 
 def test_report_with_topic_sets_pending_topic() -> None:

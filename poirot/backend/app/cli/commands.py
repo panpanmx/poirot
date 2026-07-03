@@ -80,9 +80,11 @@ def _cmd_default(console: Console, state: dict[str, Any]) -> None:
 
 
 def _cmd_report(arg: str, console: Console, state: dict[str, Any]) -> None:
-    """标记 pending_report，主循环检测后调 _trigger_report（避免 commands.py 依赖 main.py）。"""
-    topic = arg.strip() or None
-    state["pending_report"] = topic
+    """标记 pending_report，主循环检测后调 _trigger_report（避免 commands.py 依赖 main.py）。
+
+    空字符串 "" 表"pending 无 topic"，None 表"未设 pending"——区分避免 sentinel 冲突。
+    """
+    state["pending_report"] = arg.strip()
 
 
 def _cmd_expand(renderer: StreamRenderer) -> None:
