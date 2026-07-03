@@ -4,9 +4,27 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from poirot.backend.agents.capabilities.registry import CapabilityRegistry
+
+
+def _last_ai_message(state: Any) -> str:
+    """从 state.messages 取最后一条 AIMessage 的文本内容（default 模式输出）。"""
+    messages = state.get("messages", []) if isinstance(state, dict) else getattr(state, "messages", [])
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage):
+            content = msg.content
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts = [
+                    item["text"] if isinstance(item, dict) and "text" in item else str(item)
+                    for item in content
+                    if item
+                ]
+                return "".join(parts)
+    return ""
 
 
 def _resolve_actual_model_name(registry: CapabilityRegistry) -> str:
@@ -59,11 +77,11 @@ class LeaderAgent:
     def run(self, question: str, run_context: Any) -> AgentRunResult:
         initial = create_initial_thread_state(question)
         initial["research_question"] = question
-        initial["metadata"] = {"mode": run_context.config.runtime.mode}
+        initial["metadata"] = {"expert_mode": run_context.config.runtime.expert_mode}
 
         config = {
             "configurable": {
-                "mode": run_context.config.runtime.mode,
+                "expert_mode": run_context.config.runtime.expert_mode,
                 "run_id": run_context.run_id,
                 "thread_id": run_context.thread_id,
                 "journal": run_context.journal,
@@ -89,32 +107,42 @@ class LeaderAgent:
             config=config,
         ))
 
-        report_result = self.capability_registry.get_reporter().generate_report(final_state, run_context)
-
+        expert_mode = run_context.config.runtime.expert_mode
         artifact_path = None
-        if run_context.config.reporting.save_artifact:
-            artifact = self.capability_registry.get_artifact_store().save_artifact(
-                content=report_result.final_report,
-                output_dir=run_context.output_dir,
-                title="Final Report",
-                filename="final_report.md",
-                metadata={"mode": run_context.config.runtime.mode},
-            )
-            artifact_path = artifact.path
-            run_context.journal.append(
-                "report.generated",
-                {
-                    "artifact_id": artifact.artifact_id,
-                    "title": artifact.title,
-                    "path": artifact.path,
-                    "mode": run_context.config.runtime.mode,
-                },
-            )
+
+        if expert_mode:
+            # expert 模式：ReportMiddleware after_agent 已写 final_report 字段；用此 + 保存 artifact
+            final_report = final_state.get("final_report") if isinstance(final_state, dict) else None
+            if not final_report:
+                # fallback：ReportMiddleware 未跑或 observations 空 → reporter 合成
+                report_result = self.capability_registry.get_reporter().generate_report(final_state, run_context)
+                final_report = report_result.final_report
+            if run_context.config.reporting.save_artifact:
+                artifact = self.capability_registry.get_artifact_store().save_artifact(
+                    content=final_report,
+                    output_dir=run_context.output_dir,
+                    title="Final Report",
+                    filename="final_report.md",
+                    metadata={"mode": "expert"},
+                )
+                artifact_path = artifact.path
+                run_context.journal.append(
+                    "report.generated",
+                    {
+                        "artifact_id": artifact.artifact_id,
+                        "title": artifact.title,
+                        "path": artifact.path,
+                        "mode": "expert",
+                    },
+                )
+        else:
+            # default 模式：不自动报告，输出 last AIMessage；不保存 artifact（靠 /report 触发）
+            final_report = _last_ai_message(final_state) or ""
 
         return AgentRunResult(
             run_id=run_context.run_id,
             thread_id=run_context.thread_id,
-            final_report=report_result.final_report,
+            final_report=final_report,
             events_path=str(run_context.events_path),
             artifact_path=artifact_path,
             state=final_state if isinstance(final_state, dict) else dict(final_state),

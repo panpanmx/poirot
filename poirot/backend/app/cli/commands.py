@@ -27,7 +27,9 @@ def handle_command(
     handlers = {
         "/help": lambda: _cmd_help(console),
         "/clear": lambda: _cmd_clear(console),
-        "/mode": lambda: _cmd_mode(arg, console, state),
+        "/expert": lambda: _cmd_expert(console, state),
+        "/default": lambda: _cmd_default(console, state),
+        "/report": lambda: _cmd_report(arg, console, state),
         "/exit": lambda: True,
         "/quit": lambda: True,
         "/expand": lambda: _cmd_expand(renderer),
@@ -35,6 +37,7 @@ def handle_command(
         "/tools": lambda: _cmd_tools(console, runtime),
         "/model": lambda: _cmd_model(console, runtime),
         "/thread": lambda: _cmd_thread(console, runtime),
+        "/prompt": lambda: _cmd_prompt(arg, console),
     }
 
     handler = handlers.get(name)
@@ -50,12 +53,15 @@ def _cmd_help(console: Console) -> None:
     console.print("[bold]Available commands:[/bold]")
     console.print("  [cyan]/help[/cyan]     Show this help")
     console.print("  [cyan]/clear[/cyan]    Clear screen")
-    console.print("  [cyan]/mode[/cyan]     Switch mode (general|fast|expert), applies next round")
+    console.print("  [cyan]/expert[/cyan]    Switch to expert mode (deep research), applies next round")
+    console.print("  [cyan]/default[/cyan]   Switch to default mode (lightweight chat), applies next round")
+    console.print("  [cyan]/report[/cyan]    Generate report from current thread (default mode); optional topic")
     console.print("  [cyan]/expand[/cyan]   Expand last round tool results")
     console.print("  [cyan]/thinking[/cyan] Toggle thinking display (on|off)")
     console.print("  [cyan]/tools[/cyan]    List available tools")
     console.print("  [cyan]/model[/cyan]    Show current model routing chain")
     console.print("  [cyan]/thread[/cyan]   Show thread info")
+    console.print("  [cyan]/prompt[/cyan]   Prompt management (list|show <cat/name>|reload)")
     console.print("  [cyan]/exit[/cyan]     Exit (also /quit)")
 
 
@@ -63,12 +69,20 @@ def _cmd_clear(console: Console) -> None:
     console.clear()
 
 
-def _cmd_mode(arg: str, console: Console, state: dict[str, Any]) -> None:
-    if not arg or arg not in ("fast", "general", "expert"):
-        console.print("[yellow]Usage: /mode general|fast|expert[/yellow]")
-        return
-    state["pending_mode"] = arg
-    console.print(f"[green]Mode will switch to {arg} next round[/green]")
+def _cmd_expert(console: Console, state: dict[str, Any]) -> None:
+    state["pending_expert_mode"] = True
+    console.print("[green]Mode will switch to expert next round[/green]")
+
+
+def _cmd_default(console: Console, state: dict[str, Any]) -> None:
+    state["pending_expert_mode"] = False
+    console.print("[green]Mode will switch to default next round[/green]")
+
+
+def _cmd_report(arg: str, console: Console, state: dict[str, Any]) -> None:
+    """标记 pending_report，主循环检测后调 _trigger_report（避免 commands.py 依赖 main.py）。"""
+    topic = arg.strip() or None
+    state["pending_report"] = topic
 
 
 def _cmd_expand(renderer: StreamRenderer) -> None:
@@ -130,3 +144,44 @@ def _cmd_thread(console: Console, runtime: Any) -> None:
                     console.print(f"  [dim]{rid}[/dim]")
     except Exception:
         pass
+
+
+def _cmd_prompt(arg: str, console: Console) -> None:
+    """Prompt 管理命令：/prompt list | /prompt show <cat/name> | /prompt reload"""
+    from poirot.backend.agents.prompts import get_prompt_manager
+
+    pm = get_prompt_manager()
+    if not arg or arg == "list":
+        prompts = pm.list_prompts()
+        if not prompts:
+            console.print("[dim]No prompts found[/dim]")
+            return
+        console.print("[bold]Available prompts:[/bold]")
+        for p in prompts:
+            text, source = pm.load_raw(p.split("/")[0], p.split("/")[1])
+            tag = "[green](user)[/green]" if source == "user" else "[dim](system)[/dim]"
+            console.print(f"  [cyan]{p}[/cyan] {tag}")
+        return
+
+    parts = arg.split(maxsplit=1)
+    if parts[0] == "show" and len(parts) > 1:
+        ref = parts[1].strip()
+        if "/" not in ref:
+            console.print("[yellow]Usage: /prompt show <category/name>[/yellow]")
+            return
+        cat, name = ref.split("/", 1)
+        try:
+            text, source = pm.load_raw(cat, name)
+            tag = f"[green][{source}][/green]" if source == "user" else f"[dim][{source}][/dim]"
+            console.print(f"{tag} [cyan]{cat}/{name}[/cyan]:")
+            console.print(text)
+        except FileNotFoundError:
+            console.print(f"[red]Prompt not found: {ref}[/red]")
+        return
+
+    if parts[0] == "reload":
+        pm.clear_cache()
+        console.print("[green]Prompt cache cleared — next load reads from .md files[/green]")
+        return
+
+    console.print("[yellow]Usage: /prompt list | /prompt show <cat/name> | /prompt reload[/yellow]")

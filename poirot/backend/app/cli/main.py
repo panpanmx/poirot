@@ -18,7 +18,9 @@ from poirot.backend.app.cli.banner import render_banner
 from poirot.backend.app.cli.commands import handle_command
 from poirot.backend.app.cli.stream_handler import StreamRenderer
 from poirot.backend.app.services.stream_service import PoirotStreamClient
+from poirot.backend.agents.intent import default_intent_tree
 from poirot.backend.agents.leader.agent import _resolve_actual_model_name
+from poirot.backend.agents.prompts import get_prompt_manager
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -29,7 +31,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("question")
-    run_parser.add_argument("--mode", choices=("fast", "general", "expert"), default="general")
+    run_parser.add_argument("--expert", action="store_true", default=True, help="enable expert mode (deep research, default for run)")
+    run_parser.add_argument("--no-expert", action="store_false", dest="expert", help="disable expert mode (lightweight)")
     run_parser.add_argument("--thread-id", default="default-thread")
     run_parser.add_argument("--run-id", default=None)
     run_parser.add_argument("--logs-root", default=None)
@@ -49,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.no_artifact:
             overrides["save_artifact"] = False
         runtime = bootstrap_runtime(
-            mode=args.mode,
+            expert_mode=args.expert,
             provider=args.provider,
             model=args.model,
             cli_overrides=overrides,
@@ -83,7 +86,7 @@ def _build_stream_config(runtime: AppRuntime, run_context: Any) -> dict:
     """构建 graph config（stream 用，与 LeaderAgent.run 一致）。"""
     return {
         "configurable": {
-            "mode": run_context.config.runtime.mode,
+            "expert_mode": run_context.config.runtime.expert_mode,
             "run_id": run_context.run_id,
             "thread_id": run_context.thread_id,
             "journal": run_context.journal,
@@ -100,37 +103,62 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
     console = Console()
     session: PromptSession = PromptSession()
     renderer = StreamRenderer(console=console)
-    cli_state: dict[str, Any] = {"pending_mode": None}
+    cli_state: dict[str, Any] = {"pending_expert_mode": None}
 
     def _print_status() -> None:
-        mode = runtime.config.runtime.mode
+        mode_label = "expert" if runtime.config.runtime.expert_mode else "default"
         model_name = _resolve_actual_model_name(runtime.capability_registry)
-        console.print(f"[dim]Poirot v1.0.0 | mode: {mode} | {model_name} | thread: {runtime.thread_id[:20]}[/dim]")
+        console.print(f"[dim]Poirot v1.0.0 | mode: {mode_label} | {model_name} | thread: {runtime.thread_id[:20]}[/dim]")
+
+    def _print_welcome() -> None:
+        """硬编码开场白（从 prompts/system/cli/welcome.md 加载），不调 LLM。"""
+        mode_label = "expert" if runtime.config.runtime.expert_mode else "default"
+        model_name = _resolve_actual_model_name(runtime.capability_registry)
+        try:
+            welcome = get_prompt_manager().load(
+                "cli", "welcome",
+                mode_label=mode_label, model_name=model_name, thread_id=runtime.thread_id[:20],
+            )
+            console.print(welcome)
+        except Exception:
+            # welcome.md 加载失败时 fallback 简短文本
+            console.print(f"[bold]你好，我是 Poirot。[/bold] mode: {mode_label}")
+            console.print("[dim]/report 生成报告 | /expert 深度研究 | /default 轻量对话 | /help 全部命令[/dim]\n")
+
+    def _handle_report_intent(intent: Any, rt: Any) -> bool:
+        """报告意图 handler：触发报告合成。"""
+        topic = intent.payload.get("topic") if intent.payload else None
+        _trigger_report(topic, rt, console)
+        return True
+
+    def _trigger_report(topic: str | None, rt: AppRuntime, con: Console) -> None:
+        """default 模式手动触发报告：调 reporting 服务 + rich Markdown 输出。
+
+        报告生成逻辑（graph.get_state + reporter + artifact）在 agents/reporting 层，
+        CLI 仅负责 presentation（expert 提示 + Markdown 渲染）。
+        """
+        if rt.config.runtime.expert_mode:
+            con.print("[yellow]expert 模式已自动生成报告，无需手动触发。[/yellow]\n")
+            return
+        try:
+            from poirot.backend.agents.reporting import generate_report_from_thread
+            result = generate_report_from_thread(runtime=rt, topic=topic)
+        except Exception as exc:
+            con.print(f"[red]✗ 报告生成失败: {exc}[/red]\n")
+            return
+        from rich.markdown import Markdown
+        con.print(Markdown(result.final_report))
+        if result.artifact_path:
+            con.print(f"[dim]report saved: {result.artifact_path}[/dim]\n")
+        else:
+            con.print()
+
+    intent_tree = default_intent_tree(report_handler=_handle_report_intent)
 
     provider_label = provider or "default"
     console.print(render_banner("POIROT"))
-    _print_status()
-    console.print("type /exit or /quit to leave\n")
-
-    # 开场白——用 stream 流式展示
-    try:
-        ctx = runtime.run_manager.create_run(
-            thread_id=runtime.thread_id,
-            user_id="default-user",
-            run_id=None,
-            model_name=runtime.researcher_model_name,
-            thread_dir=runtime.thread_dir,
-        )
-        runtime.run_manager.mark_running(ctx.run_id)
-        config = _build_stream_config(runtime, ctx)
-        client = PoirotStreamClient(graph=runtime.leader_agent.graph, config=config)
-        async for event in client.stream(
-            "请用中文简短介绍你自己：你是谁，你能做什么，用户可以如何使用你。回复控制在100字以内，语气友好自然。"
-        ):
-            renderer.render(event)
-        runtime.run_manager.mark_success(ctx.run_id)
-    except Exception:
-        pass
+    _print_welcome()
+    console.print()
 
     # 主循环
     while True:
@@ -152,13 +180,24 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
             if should_exit:
                 return 0
 
-            # /mode 切换：下轮重建 agent
-            if cli_state.get("pending_mode"):
-                new_mode = cli_state["pending_mode"]
-                cli_state["pending_mode"] = None
-                runtime = bootstrap_runtime(provider=provider, model=model, mode=new_mode)
+            # /expert /default 切换：下轮重建 agent（复用 thread_id + checkpointer state）
+            pending = cli_state.get("pending_expert_mode")
+            if pending is not None:
+                runtime = runtime.switch_expert_mode(expert_mode=pending)
+                cli_state["pending_expert_mode"] = None
                 _print_status()
-                console.print(f"[green]Switched to {new_mode} mode[/green]\n")
+                label = "expert" if pending else "default"
+                console.print(f"[green]Switched to {label} mode[/green]\n")
+
+            # /report 命令：触发报告合成
+            pending_report = cli_state.get("pending_report")
+            if pending_report is not None:
+                cli_state["pending_report"] = None
+                _trigger_report(pending_report, runtime, console)
+            continue
+
+        # 意图识别（graph 之前）：命中则不进 graph
+        if intent_tree.detect_and_dispatch(prompt, runtime):
             continue
 
         # 流式研究

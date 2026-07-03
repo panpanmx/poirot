@@ -14,37 +14,13 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
 
+from poirot.backend.agents.prompts import get_prompt_manager
 from poirot.backend.agents.state.types import ThreadState
 
-_REPORTER_SYSTEM = """你是一名专业的研究报告撰写专家。你的任务是把已收集的研究证据（observations）和来源（sources）综合成一份严谨、结构化、可追溯的中文 Markdown 研究报告。
 
-## 核心原则
-1. **只基于已提供材料**：报告中的事实性陈述必须能在给出的 observations 中找到依据。严禁编造数据、结论或来源。不得引用未在 sources 列表中出现的 URL 或 source_id。
-2. **全程可追溯**：每条事实性陈述后用 [source_id] 标注来源（如 [src-abc123]）。无法定位来源的判断，要么标注"基于推断"，要么不要写入。
-3. **客观中立**：第三人称陈述，不带推销或主观情绪。证据之间存在矛盾时，客观呈现各方并明确指出分歧，不擅自取舍。
-4. **显式声明缺口**：若 tools 失败（errors）或某方面证据不足，必须在"信息缺口"分节如实说明"未能获取 X"，绝不静默掩盖或用空话填充。
-
-## 输出结构（Markdown，按此顺序）
-# {研究问题作为标题}
-## 摘要
-2–4 句话概括研究问题、核心发现与结论，让读者快速把握全貌。
-## 研究背景
-简要交代问题的上下文与为什么值得研究（证据不足时从简）。
-## 核心发现
-报告主体。按主题用 ### 子节组织，每条发现配证据与 [source_id] 引用。这是正文，必须有实质内容。
-## 分析与结论
-跨发现综合，给出结论、意义或建议；明确区分"证据充分支持"与"证据有限时推断"。
-## 来源
-列出用到的 sources：`- [source_id] 标题 — URL`。未在正文引用的来源不必列出。
-## 信息缺口
-仅当存在 errors 或证据不足时输出；否则省略此节。
-
-## 格式与边界
-- 直接输出 Markdown 正文，不要包裹在代码块 ``` 里，不要加前后缀解释。
-- 禁止只写一句收尾、客套话或"以上就是报告"式空泛总结——发现与分析分节必须有实质内容。
-- 正文长度应与证据量匹配：证据少则简明，证据多则充分展开；不要为凑篇幅注水。
-- 语言跟随研究问题的语言（中文问题用中文）。
-"""
+def get_reporter_system() -> str:
+    """加载 reporter 系统 prompt（从 prompts/system/reporter/system.md）。"""
+    return get_prompt_manager().load("reporter", "system")
 
 
 def _format_observations(observations: list[Any]) -> str:
@@ -113,7 +89,7 @@ def _build_reporter_messages(state: dict[str, Any]) -> list[Any]:
         user_content += f"\n# 工具失败（errors）\n{err_block}\n"
     user_content += "\n\n请基于以上证据撰写完整研究报告。"
 
-    return [SystemMessage(content=_REPORTER_SYSTEM), HumanMessage(content=user_content)]
+    return [SystemMessage(content=get_reporter_system()), HumanMessage(content=user_content)]
 
 
 class ReportMiddleware(AgentMiddleware):
@@ -121,8 +97,9 @@ class ReportMiddleware(AgentMiddleware):
 
     state_schema = ThreadState  # type: ignore[assignment]
 
-    def __init__(self, model: BaseChatModel) -> None:
+    def __init__(self, model: BaseChatModel, auto_synthesize: bool = True) -> None:
         self._model = model
+        self._auto_synthesize = auto_synthesize
 
     def _synthesize(self, state: dict[str, Any]) -> str:
         messages = _build_reporter_messages(state)
@@ -136,6 +113,9 @@ class ReportMiddleware(AgentMiddleware):
 
     @override
     def after_agent(self, state: ThreadState, runtime: Runtime) -> dict[str, Any] | None:
+        # default 模式（auto_synthesize=False）：不自动合成，报告靠 /report 命令触发。
+        if not self._auto_synthesize:
+            return None
         observations = state.get("observations") or []  # type: ignore[assignment]
         if not observations:
             return None
@@ -144,6 +124,8 @@ class ReportMiddleware(AgentMiddleware):
 
     @override
     async def aafter_agent(self, state: ThreadState, runtime: Runtime) -> dict[str, Any] | None:
+        if not self._auto_synthesize:
+            return None
         observations = state.get("observations") or []  # type: ignore[assignment]
         if not observations:
             return None

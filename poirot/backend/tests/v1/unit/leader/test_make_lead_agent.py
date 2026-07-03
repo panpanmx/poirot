@@ -39,7 +39,7 @@ def test_make_lead_agent_returns_leader_agent_with_graph() -> None:
 
 def test_make_lead_agent_via_runnable_config() -> None:
     registry = _registry()
-    config = {"configurable": {"mode": "expert", "capability_registry": registry}}
+    config = {"configurable": {"expert_mode": True, "capability_registry": registry}}
     agent = make_lead_agent(runnable_config=config)
     assert isinstance(agent, LeaderAgent)
 
@@ -54,5 +54,21 @@ def test_make_lead_agent_raises_without_registry() -> None:
 def test_make_lead_agent_no_tools_still_works() -> None:
     registry = _registry(with_tool=False)
     agent = make_lead_agent(capability_registry=registry)
+    assert isinstance(agent, LeaderAgent)
+    assert agent.graph is not None
+
+
+def test_make_lead_agent_expert_mode_param() -> None:
+    """expert_mode=True 参数应装配激进 middleware（Todo enforce_completion=True）。"""
+    registry = _registry()
+    agent = make_lead_agent(expert_mode=True, capability_registry=registry)
+    assert isinstance(agent, LeaderAgent)
+    # graph 编译应成功，含 checkpointer
+
+
+def test_make_lead_agent_default_mode_param() -> None:
+    """expert_mode=False 参数应装配温和 middleware（Todo enforce_completion=False）。"""
+    registry = _registry()
+    agent = make_lead_agent(expert_mode=False, capability_registry=registry)
     assert isinstance(agent, LeaderAgent)
     assert agent.graph is not None

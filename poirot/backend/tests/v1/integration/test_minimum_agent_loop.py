@@ -13,15 +13,16 @@ from poirot.backend.agents.leader.factory import make_lead_agent
 from poirot.backend.agents.reporting.markdown_reporter import MarkdownReporter
 from poirot.backend.agents.runtime.run_manager import RunManager
 from poirot.backend.app.bootstrap import AppRuntime
+from poirot.backend.tests.v1._fake_model import FakeChatModelWithTools
 
 
 def _fake_model():
-    return FakeListChatModel(responses=["Research Poirot architecture summary."])
+    return FakeChatModelWithTools(responses=["Research Poirot architecture summary."])
 
 
 def test_minimum_agent_loop_generates_final_report_and_artifact() -> None:
     temp_dir = _workspace_temp_dir()
-    config = load_config(mode="general", cli_overrides={"logs_root": str(temp_dir)})
+    config = load_config(expert_mode=True, cli_overrides={"logs_root": str(temp_dir)})
     model = _fake_model()
     registry = CapabilityRegistry(
         models={"researcher": model, "reporter": model},
@@ -39,7 +40,7 @@ def test_minimum_agent_loop_generates_final_report_and_artifact() -> None:
         thread_id="thread-1",
         thread_dir=thread_dir,
         thread_journal=RunJournal("thread-1", thread_dir / "thread-events.jsonl"),
-        leader_agent=make_lead_agent(capability_registry=registry),
+        leader_agent=make_lead_agent(expert_mode=True, capability_registry=registry),
     )
 
     result = runtime.run_question(

@@ -7,8 +7,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "name": "poirot",
     "environment": "local",
     "runtime": {
-        "mode": "general",
-        "default_mode": "general",
+        "expert_mode": False,
         "timezone": "Asia/Shanghai",
         "max_loop_steps": 4,
         "timeout_seconds": 120,
@@ -41,38 +40,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
 }
 
-MODE_PROFILES: dict[str, dict[str, Any]] = {
-    "fast": {
-        "runtime": {
-            "mode": "fast",
-            "max_loop_steps": 1,
-            "plan_enabled": False,
-            "reflection_enabled": False,
-        },
-        "tools": {"tool_search_default": False},
-        "middleware": {"enabled": (), "todo": False},
-        "reporting": {"save_artifact": False},
+# expert 模式叠加层：load_config(expert_mode=True) 时 deep_merge 到 DEFAULT_CONFIG。
+# 替代原 fast/general/expert 三 profile（mode 枚举废弃，改 expert_mode: bool 参数化）。
+EXPERT_PROFILE: dict[str, Any] = {
+    "runtime": {
+        "expert_mode": True,
+        "max_loop_steps": 8,
+        "plan_enabled": True,
+        "reflection_enabled": True,
     },
-    "general": {
-        "runtime": {
-            "mode": "general",
-            "max_loop_steps": 4,
-            "plan_enabled": True,
-            "reflection_enabled": False,
-        },
-        "tools": {"tool_search_default": True},
-        "middleware": {"enabled": ("todo",), "todo": True},
-        "reporting": {"save_artifact": True},
-    },
-    "expert": {
-        "runtime": {
-            "mode": "expert",
-            "max_loop_steps": 8,
-            "plan_enabled": True,
-            "reflection_enabled": True,
-        },
-        "tools": {"tool_search_default": True},
-        "middleware": {"enabled": ("todo", "summarization"), "todo": True, "summarization": True},
-        "reporting": {"save_artifact": True},
-    },
+    "tools": {"tool_search_default": True},
+    "middleware": {"enabled": ("todo", "summarization"), "todo": True, "summarization": True},
+    "reporting": {"save_artifact": True},
 }

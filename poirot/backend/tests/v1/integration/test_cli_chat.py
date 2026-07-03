@@ -8,11 +8,12 @@ from poirot.backend.agents.leader.factory import make_lead_agent
 from poirot.backend.agents.reporting.markdown_reporter import MarkdownReporter
 from poirot.backend.agents.runtime.run_manager import RunManager
 from poirot.backend.app.bootstrap import AppRuntime
+from poirot.backend.tests.v1._fake_model import FakeChatModelWithTools
 
 
 def test_chat_run_question_produces_report_and_logs(tmp_path) -> None:
-    config = load_config(mode="general", cli_overrides={"logs_root": str(tmp_path)})
-    model = FakeListChatModel(responses=["你好！我是 Poirot 研究助手。"])
+    config = load_config(expert_mode=True, cli_overrides={"logs_root": str(tmp_path)})
+    model = FakeChatModelWithTools(responses=["你好！我是 Poirot 研究助手。"])
     registry = CapabilityRegistry(
         models={"researcher": model, "reporter": model},
         tools={},
@@ -29,7 +30,7 @@ def test_chat_run_question_produces_report_and_logs(tmp_path) -> None:
         thread_id="thread-chat",
         thread_dir=thread_dir,
         thread_journal=RunJournal("thread-chat", thread_dir / "thread-events.jsonl"),
-        leader_agent=make_lead_agent(capability_registry=registry),
+        leader_agent=make_lead_agent(expert_mode=True, capability_registry=registry),
     )
 
     result = runtime.run_question("你好")

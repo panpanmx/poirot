@@ -87,14 +87,50 @@ class AppRuntime:
             self.run_manager.mark_failed(context.run_id, str(exc))
             raise
 
+    def switch_expert_mode(self, expert_mode: bool) -> AppRuntime:
+        """切换 expert 模式，精准重建受影响部分，保留 thread 连续性。
+
+        重建：config + run_manager + leader_agent（依赖 expert_mode 编译参数）。
+        保留：thread_id / thread_dir / thread_journal / capability_registry /
+        researcher_model_name（checkpointer state 跨模式连续，MCP/models 不重载）。
+
+        返回新 AppRuntime 实例（不可变语义），CLI 用 runtime = runtime.switch_expert_mode(...)。
+        """
+        new_config = load_config(expert_mode=expert_mode)
+        logs_root = Path(new_config.runtime.logs_root)
+        if not logs_root.is_absolute():
+            logs_root = _PROJECT_ROOT / logs_root
+        new_config = replace(
+            new_config,
+            runtime=replace(new_config.runtime, logs_root=str(logs_root)),
+        )
+        new_leader = make_lead_agent(
+            expert_mode=expert_mode,
+            capability_registry=self.capability_registry,
+        )
+        self.thread_journal.append("mode.switched", {
+            "expert_mode": expert_mode,
+            "thread_id": self.thread_id,
+        })
+        return AppRuntime(
+            config=new_config,
+            capability_registry=self.capability_registry,
+            run_manager=RunManager(new_config),
+            researcher_model_name=self.researcher_model_name,
+            thread_id=self.thread_id,
+            thread_dir=self.thread_dir,
+            thread_journal=self.thread_journal,
+            leader_agent=new_leader,
+        )
+
 
 def bootstrap_runtime(
-    mode: str = "general",
+    expert_mode: bool = False,
     provider: str | None = None,
     model: str | None = None,
     cli_overrides: dict[str, Any] | None = None,
 ) -> AppRuntime:
-    config = load_config(mode=mode, cli_overrides=cli_overrides)
+    config = load_config(expert_mode=expert_mode, cli_overrides=cli_overrides)
     logs_root = Path(config.runtime.logs_root)
     if not logs_root.is_absolute():
         logs_root = _PROJECT_ROOT / logs_root
@@ -113,7 +149,7 @@ def bootstrap_runtime(
         events_path=thread_dir / "thread-events.jsonl",
     )
     thread_journal.append("thread.started", {
-        "mode": mode,
+        "expert_mode": expert_mode,
         "provider": provider or "default",
     })
 
@@ -170,8 +206,9 @@ def bootstrap_runtime(
         reporter=MarkdownReporter(),
         artifact_store=LocalArtifactStore(),
     )
-    leader_agent = make_lead_agent(capability_registry=registry)
+    leader_agent = make_lead_agent(expert_mode=expert_mode, capability_registry=registry)
     thread_journal.append("agent.constructed", {
+        "expert_mode": expert_mode,
         "middleware_count": 6,
         "tools_count": len(tools),
     })

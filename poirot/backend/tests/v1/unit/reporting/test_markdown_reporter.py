@@ -38,7 +38,7 @@ def test_markdown_reporter_generates_report_and_journal_event() -> None:
 
 
 def _context(temp_dir: Path) -> RunContext:
-    config = load_config(mode="general", cli_overrides={"logs_root": str(temp_dir)})
+    config = load_config(cli_overrides={"logs_root": str(temp_dir)})
     return RunContext(
         run_id="run-1",
         thread_id="thread-1",

@@ -1,46 +1,41 @@
-import pytest
-
 from poirot.backend.agents.leader.prompts import apply_prompt_template
 
 
-def test_fast_mode_prompt() -> None:
-    prompt = apply_prompt_template("fast")
+def test_default_mode_prompt() -> None:
+    prompt = apply_prompt_template(expert_mode=False)
     assert "Poirot" in prompt
-    assert "fast" in prompt
     assert "<identity>" in prompt
     assert "<constraints>" in prompt
-    assert "<mode" in prompt
-
-
-def test_general_mode_prompt() -> None:
-    prompt = apply_prompt_template("general")
-    assert "Poirot" in prompt
-    assert "general" in prompt
-    assert "<constraints>" in prompt
+    assert "<decision_guidance>" in prompt
+    # default 模式不含 expert 段
+    assert "<mode name=\"expert\">" not in prompt
 
 
 def test_expert_mode_prompt() -> None:
-    prompt = apply_prompt_template("expert")
+    prompt = apply_prompt_template(expert_mode=True)
     assert "Poirot" in prompt
-    assert "expert" in prompt
+    assert "<identity>" in prompt
+    assert "<constraints>" in prompt
+    assert "<decision_guidance>" in prompt
+    # expert 模式追加 mode_expert 段
+    assert "<mode name=\"expert\">" in prompt
     assert "reflection" in prompt
 
 
-def test_three_modes_are_distinct() -> None:
-    prompts = {mode: apply_prompt_template(mode) for mode in ("fast", "general", "expert")}
-    assert len(set(prompts.values())) == 3
-
-
-def test_invalid_mode_raises() -> None:
-    with pytest.raises(ValueError, match="unsupported mode"):
-        apply_prompt_template("ultra")
+def test_expert_mode_appends_expert_section() -> None:
+    """expert prompt 应比 default 多 mode_expert 段。"""
+    default_prompt = apply_prompt_template(expert_mode=False)
+    expert_prompt = apply_prompt_template(expert_mode=True)
+    assert len(expert_prompt) > len(default_prompt)
+    assert "<mode name=\"expert\">" in expert_prompt
+    assert "<mode name=\"expert\">" not in default_prompt
 
 
 def test_context_kwargs_accepted() -> None:
-    prompt = apply_prompt_template("general", skills=["a"], deferred_names=["b"])
-    assert "general" in prompt
+    prompt = apply_prompt_template(expert_mode=False, skills=["a"], deferred_names=["b"])
+    assert "Poirot" in prompt
 
 
 def test_language_constraint_in_prompt() -> None:
-    prompt = apply_prompt_template("general")
+    prompt = apply_prompt_template(expert_mode=False)
     assert "语言约束" in prompt or "language" in prompt.lower()

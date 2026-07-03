@@ -10,9 +10,7 @@ from poirot.backend.agents.runtime.run_record import RunStatus
 
 def test_run_manager_creates_record_and_context() -> None:
     temp_dir = _workspace_temp_dir()
-    config = load_config(
-        mode="general",
-        cli_overrides={"logs_root": str(temp_dir / "logs")},
+    config = load_config(cli_overrides={"logs_root": str(temp_dir / "logs")},
     )
     manager = RunManager(config=config)
 
@@ -35,9 +33,7 @@ def test_run_manager_creates_record_and_context() -> None:
 
 def test_run_manager_updates_lifecycle_and_journal() -> None:
     temp_dir = _workspace_temp_dir()
-    config = load_config(
-        mode="general",
-        cli_overrides={"logs_root": str(temp_dir / "logs")},
+    config = load_config(cli_overrides={"logs_root": str(temp_dir / "logs")},
     )
     manager = RunManager(config=config)
     context = manager.create_run(

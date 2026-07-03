@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
-
-RunMode = Literal["fast", "general", "expert"]
 
 
 @dataclass(frozen=True)
 class RuntimeConfig:
-    mode: RunMode
-    default_mode: RunMode = "general"
+    expert_mode: bool = False
     timezone: str = "Asia/Shanghai"
     max_loop_steps: int = 4
     timeout_seconds: int = 120

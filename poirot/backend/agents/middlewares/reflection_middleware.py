@@ -18,6 +18,7 @@ from langgraph.runtime import Runtime
 from poirot.backend.agents.middlewares import _jump_budget
 from poirot.backend.agents.middlewares.run_journal_middleware import _get_runtime_value
 from poirot.backend.agents.middlewares.todo_middleware import _has_persistent_failures, _has_tool_call_intent
+from poirot.backend.agents.prompts import get_prompt_manager
 from poirot.backend.agents.state.types import ReflectionItem, ThreadState
 
 
@@ -49,6 +50,17 @@ def _field(item: Any, name: str) -> Any:
     if isinstance(item, dict):
         return item.get(name)
     return getattr(item, name, None)
+
+
+class LightReflectionStrategy:
+    """default 模式轻量策略：不 jump，直接 pass。
+
+    default 模式不强制补研究——模型给答案即结束。保留 ReflectionMiddleware 外壳
+    （触发时机 + jump 预算管理），但判断逻辑恒 pass。
+    """
+
+    def reflect(self, state: dict[str, Any], runtime: Runtime) -> ReflectionAction:
+        return ReflectionAction(verdict="pass", reflection_items=[], plan=None, guidance="", rollback_to="")
 
 
 class SufficiencyStrategy:
@@ -107,13 +119,9 @@ class SufficiencyStrategy:
             f"- [{_step_id(o) or '-'}] {(_field(o, 'content') or '')[:200]}"
             for o in observations[:10]
         )
-        prompt = (
-            "你是研究充分性评估者。判断当前证据是否充分支撑研究问题。\n\n"
-            f"研究问题：{question}\n\n"
-            f"研究步骤（todos）：\n{todos_desc}\n\n"
-            f"已收集证据（observations 概要）：\n{obs_desc}\n\n"
-            "判断标准：简单问题少量切题证据即充分；复杂问题需足够证据。"
-            "只回复 JSON：{\"sufficient\": true/false, \"reason\": \"简短理由\"}"
+        prompt = get_prompt_manager().load(
+            "reflection", "sufficiency",
+            question=question, todos_desc=todos_desc, obs_desc=obs_desc,
         )
         try:
             from langchain_core.messages import HumanMessage

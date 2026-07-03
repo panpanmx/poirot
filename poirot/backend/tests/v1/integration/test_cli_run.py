@@ -12,12 +12,13 @@ from poirot.backend.agents.leader.factory import make_lead_agent
 from poirot.backend.agents.reporting.markdown_reporter import MarkdownReporter
 from poirot.backend.agents.runtime.run_manager import RunManager
 from poirot.backend.app.bootstrap import AppRuntime
+from poirot.backend.tests.v1._fake_model import FakeChatModelWithTools
 
 
 def test_cli_run_prints_report_and_paths() -> None:
     temp_dir = _workspace_temp_dir()
-    config = load_config(mode="general", cli_overrides={"logs_root": str(temp_dir)})
-    model = FakeListChatModel(responses=["CLI research question answer."])
+    config = load_config(expert_mode=True, cli_overrides={"logs_root": str(temp_dir)})
+    model = FakeChatModelWithTools(responses=["CLI research question answer."])
     registry = CapabilityRegistry(
         models={"researcher": model, "reporter": model},
         tools={},
@@ -34,7 +35,7 @@ def test_cli_run_prints_report_and_paths() -> None:
         thread_id="thread-cli",
         thread_dir=thread_dir,
         thread_journal=RunJournal("thread-cli", thread_dir / "thread-events.jsonl"),
-        leader_agent=make_lead_agent(capability_registry=registry),
+        leader_agent=make_lead_agent(expert_mode=True, capability_registry=registry),
     )
 
     result = runtime.run_question(question="CLI research question", run_id="run-cli")

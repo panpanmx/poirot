@@ -23,6 +23,7 @@ from langgraph.runtime import Runtime
 
 from poirot.backend.agents.middlewares.run_journal_middleware import _get_runtime_value
 from poirot.backend.agents.middlewares import _jump_budget
+from poirot.backend.agents.prompts import get_prompt_manager
 from poirot.backend.agents.state.types import ThreadState
 
 _STEPS_SINCE_WRITE_THRESHOLD = 5
@@ -64,13 +65,7 @@ def _format_todos(todos: list[Todo]) -> str:
 def _format_completion_reminder(todos: list[Todo]) -> str:
     incomplete = [t for t in todos if t.get("status") != "completed"]
     lines = "\n".join(f"- [{t.get('status', 'pending')}] {t.get('content', '')}" for t in incomplete)
-    return (
-        "<system_reminder>\n"
-        "你有未完成的研究任务，请在给出最终答案前完成它们：\n\n"
-        f"{lines}\n\n"
-        "请继续完成这些任务，并在每步完成后调用 write_todos 更新状态，全部 completed 后再输出答案。\n"
-        "</system_reminder>"
-    )
+    return get_prompt_manager().load("todo", "completion_reminder", lines=lines)
 
 
 def _infer_current_step_id(last_ai: AIMessage | None) -> str | None:
@@ -130,8 +125,9 @@ class TodoMiddleware(TodoListMiddleware):
 
     state_schema = ThreadState  # type: ignore[assignment]
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, enforce_completion: bool = True, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self._enforce_completion = enforce_completion
         self._lock = threading.Lock()
         self._pending_completion_reminders: dict[tuple[str, str], list[str]] = {}
         self._completion_reminder_counts: dict[tuple[str, str], int] = {}
@@ -162,13 +158,7 @@ class TodoMiddleware(TodoListMiddleware):
             return {"messages": [HumanMessage(
                 name="todo_reminder",
                 additional_kwargs={"hide_from_ui": True},
-                content=(
-                    "<system_reminder>\n"
-                    "你的 todo list 已不在当前 context 中，但仍然有效。当前状态：\n\n"
-                    f"{_format_todos(todos)}\n\n"
-                    "请继续追踪并在每步完成后调用 write_todos 更新状态。\n"
-                    "</system_reminder>"
-                ),
+                content=get_prompt_manager().load("todo", "context_loss_reminder", todos=_format_todos(todos)),
             )]}
 
         # Layer 3: Nag — dual-threshold reminder.
@@ -197,12 +187,7 @@ class TodoMiddleware(TodoListMiddleware):
             return {"messages": [HumanMessage(
                 name="todo_nag",
                 additional_kwargs={"hide_from_ui": True},
-                content=(
-                    "<system_reminder>\n"
-                    f"已超过 {steps} 步未更新 todo，请检查以下任务是否需要补充或更新状态：\n\n"
-                    f"{_format_todos(incomplete)}\n"
-                    "</system_reminder>"
-                ),
+                content=get_prompt_manager().load("todo", "nag_reminder", steps=steps, lines=_format_todos(incomplete)),
             )]}
 
         return None
@@ -269,6 +254,11 @@ class TodoMiddleware(TodoListMiddleware):
 
         # 3. Only intercept clean final answers (no tool-call intent).
         if not last_ai or _has_tool_call_intent(last_ai):
+            return step_update or None
+
+        # default 模式（enforce_completion=False）：不强制完成度，模型想退就退。
+        # 软引导（prompt + write_todos 工具注册 + context-loss 检测）仍保留。
+        if not self._enforce_completion:
             return step_update or None
 
         # 4. Allow exit when all todos are completed or none exist.

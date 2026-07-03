@@ -69,7 +69,7 @@ class RunManager:
             created_at=now,
             updated_at=now,
             model_name=model_name or self.config.models.researcher_model,
-            metadata={"mode": self.config.runtime.mode},
+            metadata={"expert_mode": self.config.runtime.expert_mode},
         )
         self._contexts[created_run_id] = context
         self._records[created_run_id] = record
@@ -88,7 +88,7 @@ class RunManager:
         self._store_record(updated)
         self._require_context(run_id).journal.append(
             "run.started",
-            {"mode": self.config.runtime.mode},
+            {"expert_mode": self.config.runtime.expert_mode},
         )
         return updated
 
