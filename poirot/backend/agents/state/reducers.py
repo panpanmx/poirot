@@ -183,8 +183,8 @@ def merge_governance(current: dict | None, incoming: dict | None) -> dict | None
     - both dict → recursive deep-merge: dict values merged recursively,
       non-dict (scalar/list) last-write-wins.
 
-    Per-capability key 前缀隔离（externalizer. / compressor. / ...）保证各能力
-    不冲突。跨轮经 checkpointer 持久化。
+    策略 bundle 自管命名空间 ``governance.<strategy_name>.*``，deep-merge 并存，
+    同 key last-write-wins。跨轮经 checkpointer 持久化。
     """
     if incoming is None:
         return current

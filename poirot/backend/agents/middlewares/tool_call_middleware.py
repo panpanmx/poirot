@@ -191,6 +191,13 @@ class ToolCallMiddleware(AgentMiddleware):
                 related_refs=(call_id,), created_at=_now_iso(),
             )
             self._emit(runtime, "tool.failure_streak", {"tool": tool_name, "attempt": attempt, "type": error_type})
+            # 合成 error ToolMessage 补 tool_call_id，保证 tool_call/tool_response 配对完整
+            # （缺则下一轮 model 调用 400: insufficient tool messages following tool_calls）
+            result = ToolMessage(
+                content=f"⚠️ 工具 {tool_name} 执行异常（{error_type}）：{exc}",
+                tool_call_id=call_id,
+                status="error",
+            )
         else:
             fail = _is_failure(result)
             if fail:
@@ -217,6 +224,10 @@ class ToolCallMiddleware(AgentMiddleware):
         # 记账本
         new_errors_count = _total_calls(errors) + 1
         update: dict[str, Any] = {"errors": [err]}
+
+        # 守卫：result 为 None（handler 返 None 无异常）—— 补空 ToolMessage 保 tool_call 配对完整
+        if result is None:
+            result = ToolMessage(content="", tool_call_id=call_id)
 
         # F8.2：失败摘要递进注入（3/6/9）
         if kind == "failure" and attempt in _SUMMARY_THRESHOLDS:

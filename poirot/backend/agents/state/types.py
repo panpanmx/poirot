@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired
 
 from langchain.agents import AgentState
 
@@ -18,30 +18,11 @@ from poirot.backend.agents.state.reducers import (
     merge_todos,
 )
 
-
-class GovernanceState(TypedDict, total=False):
-    """上下文治理层共享状态（存 ThreadState.governance，跨轮持久）。
-
-    两层机制：
-    - 固定槽（下述字段）：跨能力共享读的协调契约，强类型。如 Compressor 读
-      externalized_refs 跳过已外化 ToolMessage。
-    - per-capability 前缀：能力私有/扩展数据走 ``<cap>.<key>`` 前缀 key，主要
-      落 metrics dict 内分桶（如 "externalizer.bytes_externalized"）。
-      merge_governance deep-merge 并存，同 key last-write-wins。各能力只写
-      自己前缀，不越界（单测/CR 把关，无中央强制）。
-
-    边界准则：跨能力需读 → 固定槽；仅本能力私有 → 前缀。
-
-    全字段可 JSON 序列化（str/int/dict/list），禁 file handle 等不可序列化对象。
-    """
-
-    strategy_name: str
-    externalized_refs: dict[str, str]
-    promoted_tools: dict[str, Any]
-    compress_watermark: int
-    budget_usage: dict[str, int]
-    injected_reminder_ids: list[str]
-    metrics: dict[str, Any]
+# 治理层共享状态：策略 bundle 自管命名空间 governance.<strategy_name>.*。
+# 族无关，不预设固定槽（原 6 固定槽是 volume 族 schema，已删）。
+# merge_governance deep-merge（last-write-wins per leaf key）。
+# 全值可 JSON 序列化（str/int/dict/list），禁 file handle 等不可序列化对象。
+GovernanceState = dict[str, Any]
 
 
 @dataclass(frozen=True)

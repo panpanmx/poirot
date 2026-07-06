@@ -2,7 +2,7 @@
 
 累计 token 超硬阈值则剥最后 AIMessage tool_calls + 注入停止文本 + jump model。
 硬底线是安全需求，所有策略必需，固定 real 不经 registry。noop=run 失控（安全坏）。
-软警告属策略层 BudgetGuard，不在此。run-scoped 累计增强见 S5 baseline。
+软警告属策略 bundle 内部实现，不在此。run-scoped 累计增强见后续策略实现。
 """
 
 from __future__ import annotations

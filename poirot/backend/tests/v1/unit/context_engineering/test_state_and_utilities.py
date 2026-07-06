@@ -13,36 +13,36 @@ from poirot.backend.agents.context_engineering.utilities import (
 
 
 def test_merge_governance_incoming_none_preserves_current() -> None:
-    current = {"externalizer.refs": {"a": "p1"}}
+    current = {"vol.refs": {"a": "p1"}}
     assert merge_governance(current, None) is current
 
 
 def test_merge_governance_current_none_returns_copy() -> None:
-    incoming = {"compressor.watermark": 5}
+    incoming = {"vol.watermark": 5}
     result = merge_governance(None, incoming)
     assert result == incoming
     assert result is not incoming  # copy
 
 
 def test_merge_governance_deep_merge_nested_dict() -> None:
-    current = {"externalizer.refs": {"a": "p1"}}
-    incoming = {"externalizer.refs": {"b": "p2"}}
+    current = {"vol.refs": {"a": "p1"}}
+    incoming = {"vol.refs": {"b": "p2"}}
     result = merge_governance(current, incoming)
-    assert result == {"externalizer.refs": {"a": "p1", "b": "p2"}}
+    assert result == {"vol.refs": {"a": "p1", "b": "p2"}}
 
 
 def test_merge_governance_last_write_wins_scalar() -> None:
-    current = {"compressor.watermark": 5}
-    incoming = {"compressor.watermark": 10}
-    assert merge_governance(current, incoming) == {"compressor.watermark": 10}
+    current = {"vol.watermark": 5}
+    incoming = {"vol.watermark": 10}
+    assert merge_governance(current, incoming) == {"vol.watermark": 10}
 
 
 def test_merge_governance_different_keys_coexist() -> None:
-    current = {"externalizer.refs": {"a": "p1"}}
-    incoming = {"compressor.watermark": 5}
+    current = {"vol.refs": {"a": "p1"}}
+    incoming = {"vol.watermark": 5}
     assert merge_governance(current, incoming) == {
-        "externalizer.refs": {"a": "p1"},
-        "compressor.watermark": 5,
+        "vol.refs": {"a": "p1"},
+        "vol.watermark": 5,
     }
 
 

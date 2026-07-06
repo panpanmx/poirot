@@ -41,7 +41,7 @@ def _build_middlewares(
         Report after_agent 自动合成。
 
     治理层（context_governance）挂载顺序见 builder.build_governance_middlewares。
-    挂载顺序：治理层（公共3+策略5） → SystemContext → Title → RunJournal →
+    挂载顺序：治理层（公共3 + StrategyMiddleware） → SystemContext → Title → RunJournal →
     LoopDetection → ToolCall → Evidence → Todo → Reflection → Report。
     """
     middlewares: list = []
