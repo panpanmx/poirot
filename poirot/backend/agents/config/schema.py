@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,14 @@ class RuntimeConfig:
     logs_root: str = ".poirot/logs"
     plan_enabled: bool = True
     reflection_enabled: bool = False
+
+
+@dataclass(frozen=True)
+class ContextGovernanceConfig:
+    """上下文治理层配置（策略层）。公共层 middleware 固定挂，不经此配置。"""
+
+    strategy: str = "minimal"
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -57,3 +66,4 @@ class AppConfig:
     middleware: MiddlewareConfig
     reporting: ReportingConfig
     observability: ObservabilityConfig
+    context_governance: ContextGovernanceConfig = field(default_factory=ContextGovernanceConfig)

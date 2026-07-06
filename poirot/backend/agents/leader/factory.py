@@ -20,7 +20,6 @@ from poirot.backend.agents.middlewares.reflection_middleware import (
 )
 from poirot.backend.agents.middlewares.report_middleware import ReportMiddleware
 from poirot.backend.agents.middlewares.run_journal_middleware import RunJournalMiddleware
-from poirot.backend.agents.middlewares.summarization_middleware import SummarizationMiddleware
 from poirot.backend.agents.middlewares.system_context_middleware import SystemContextMiddleware
 from poirot.backend.agents.middlewares.title_middleware import TitleMiddleware
 from poirot.backend.agents.middlewares.todo_middleware import TodoMiddleware
@@ -29,7 +28,11 @@ from poirot.backend.agents.runtime.checkpointer import get_checkpointer
 from poirot.backend.agents.state.types import ThreadState
 
 
-def _build_middlewares(expert_mode: bool, model: BaseChatModel | None = None) -> list:
+def _build_middlewares(
+    expert_mode: bool,
+    model: BaseChatModel | None = None,
+    context_governance: Any = None,
+) -> list:
     """全模式全挂 middleware，参数化控制行为差异。
 
     default (expert_mode=False): 温和参数——Todo 不强制完成、Reflection 不 jump、
@@ -37,11 +40,18 @@ def _build_middlewares(expert_mode: bool, model: BaseChatModel | None = None) ->
     expert (expert_mode=True): 激进参数——Todo 强制完成、Reflection 充分性 jump、
         Report after_agent 自动合成。
 
-    全挂顺序：Summarization → SystemContext → Title → RunJournal → LoopDetection →
-    ToolCall → Evidence → Todo → Reflection → Report。
+    治理层（context_governance）挂载顺序见 builder.build_governance_middlewares。
+    挂载顺序：治理层（公共3+策略5） → SystemContext → Title → RunJournal →
+    LoopDetection → ToolCall → Evidence → Todo → Reflection → Report。
     """
-    middlewares = [
-        SummarizationMiddleware(),
+    middlewares: list = []
+    if context_governance is not None:
+        from poirot.backend.agents.context_engineering.builder import (
+            build_governance_middlewares,
+        )
+
+        middlewares.extend(build_governance_middlewares(context_governance))
+    middlewares.extend([
         SystemContextMiddleware(),
         TitleMiddleware(),
         RunJournalMiddleware(),
@@ -53,7 +63,7 @@ def _build_middlewares(expert_mode: bool, model: BaseChatModel | None = None) ->
             strategy=SufficiencyStrategy(llm=model) if expert_mode else LightReflectionStrategy(),
             llm=model,
         ),
-    ]
+    ])
     if model is not None:
         middlewares.append(ReportMiddleware(model, auto_synthesize=expert_mode))
     return middlewares
@@ -64,6 +74,7 @@ def make_lead_agent(
     capability_registry: CapabilityRegistry | None = None,
     middleware_manager: Any = None,
     runnable_config: RunnableConfig | None = None,
+    context_governance: Any = None,
 ) -> Any:
     """App-layer factory: expert_flag 参数化装配 graph。
 
@@ -106,7 +117,7 @@ def make_lead_agent(
         graph=create_agent(
             model=model,
             tools=tools or None,
-            middleware=_build_middlewares(resolved_expert, model),
+            middleware=_build_middlewares(resolved_expert, model, context_governance),
             system_prompt=apply_prompt_template(expert_mode=resolved_expert),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),

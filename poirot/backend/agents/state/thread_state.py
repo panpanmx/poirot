@@ -14,4 +14,5 @@ def create_initial_thread_state(user_input: str) -> ThreadState:
         "reflection_items": [],
         "errors": [],
         "metadata": {},
+        "governance": None,
     }

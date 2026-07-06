@@ -6,6 +6,7 @@ from typing import Any
 from poirot.backend.agents.config.defaults import DEFAULT_CONFIG, EXPERT_PROFILE
 from poirot.backend.agents.config.schema import (
     AppConfig,
+    ContextGovernanceConfig,
     MiddlewareConfig,
     ModelConfig,
     ObservabilityConfig,
@@ -83,6 +84,7 @@ def _build_config(raw: dict[str, Any]) -> AppConfig:
         middleware=MiddlewareConfig(**raw["middleware"]),
         reporting=ReportingConfig(**raw["reporting"]),
         observability=ObservabilityConfig(**raw["observability"]),
+        context_governance=ContextGovernanceConfig(**raw.get("context_governance", {})),
     )
 
 

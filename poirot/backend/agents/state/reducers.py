@@ -173,3 +173,29 @@ def merge_todos(existing: list | None, new: list | None) -> list | None:
     if new is None:
         return existing
     return new
+
+
+def merge_governance(current: dict | None, incoming: dict | None) -> dict | None:
+    """Reducer for ThreadState.governance — deep-merge, last-write-wins per leaf key.
+
+    - incoming None → preserve current.
+    - current None → return copy of incoming.
+    - both dict → recursive deep-merge: dict values merged recursively,
+      non-dict (scalar/list) last-write-wins.
+
+    Per-capability key 前缀隔离（externalizer. / compressor. / ...）保证各能力
+    不冲突。跨轮经 checkpointer 持久化。
+    """
+    if incoming is None:
+        return current
+    if current is None:
+        return dict(incoming)
+    if not isinstance(current, dict) or not isinstance(incoming, dict):
+        return incoming
+    merged = dict(current)
+    for key, value in incoming.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = merge_governance(merged[key], value)
+        else:
+            merged[key] = value
+    return merged

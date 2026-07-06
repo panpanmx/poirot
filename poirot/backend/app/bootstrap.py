@@ -206,7 +206,11 @@ def bootstrap_runtime(
         reporter=MarkdownReporter(),
         artifact_store=LocalArtifactStore(),
     )
-    leader_agent = make_lead_agent(expert_mode=expert_mode, capability_registry=registry)
+    leader_agent = make_lead_agent(
+        expert_mode=expert_mode,
+        capability_registry=registry,
+        context_governance=config.context_governance,
+    )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,
         "middleware_count": 6,

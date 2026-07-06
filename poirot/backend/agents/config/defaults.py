@@ -38,6 +38,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "event_log_enabled": True,
         "log_level": "INFO",
     },
+    "context_governance": {
+        "strategy": "minimal",
+        "params": {},
+    },
 }
 
 # expert 模式叠加层：load_config(expert_mode=True) 时 deep_merge 到 DEFAULT_CONFIG。
@@ -52,4 +56,5 @@ EXPERT_PROFILE: dict[str, Any] = {
     "tools": {"tool_search_default": True},
     "middleware": {"enabled": ("todo", "summarization"), "todo": True, "summarization": True},
     "reporting": {"save_artifact": True},
+    "context_governance": {"strategy": "minimal"},
 }
