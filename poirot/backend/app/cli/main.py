@@ -223,6 +223,7 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
             runtime.run_manager.mark_failed(ctx.run_id, "interrupted")
             continue
         except Exception as exc:
+            renderer._stop_spinner()
             console.print(f"\n[red]✗ Error: {exc}[/red]\n")
             runtime.run_manager.mark_failed(ctx.run_id, str(exc))
             continue

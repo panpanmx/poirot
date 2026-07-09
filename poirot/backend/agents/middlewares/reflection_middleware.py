@@ -68,12 +68,44 @@ class SufficiencyStrategy:
 
     F7：覆盖度判断交 LLM 评估（若提供 model），否则保持"每步有无 observation"判断（MVP 过渡）。
     未完成 todo 交给 Todo Layer 2，Reflection 只在 todo 全完成时判实质充分。
+    非研究类问题（personal）直接 pass + 提示，避免 reflection 死循环。
     """
+
+    _RESEARCH_KEYWORDS = frozenset({
+        "调研", "分析", "对比", "搜索", "报告", "研究", "深度", "了解",
+        "收集", "整理", "调查", "评估", "综述", "总结", "查找", "查询",
+        "research", "analyze", "compare", "search", "report", "study",
+        "investigate", "survey", "review", "summary", "find", "deep dive",
+    })
 
     def __init__(self, llm: Any = None) -> None:
         self._llm = llm
 
+    def _classify_question(self, state: dict[str, Any]) -> str:
+        """分类问题类型：research / personal / mixed。"""
+        question = (state.get("research_question") or state.get("user_input") or "").lower()
+        has_research_kw = any(kw in question for kw in self._RESEARCH_KEYWORDS)
+        has_observations = bool(state.get("observations"))
+        has_todos = bool(state.get("todos"))
+        if has_todos or has_observations:
+            return "research" if has_research_kw else "mixed"
+        return "research" if has_research_kw else "personal"
+
     def reflect(self, state: dict[str, Any], runtime: Runtime) -> ReflectionAction:
+        # 非研究类问题直接 pass + 提示，避免 reflection 死循环
+        qtype = self._classify_question(state)
+        if qtype == "personal":
+            return ReflectionAction(
+                verdict="pass", reflection_items=[], plan=None,
+                guidance=(
+                    "<system_reminder>\n"
+                    "该问题似乎不需要深度研究。建议 /default 模式对话，"
+                    "或提供更具体的研究方向。当前将直接回答。\n"
+                    "</system_reminder>"
+                ),
+                rollback_to="",
+            )
+
         todos = state.get("todos") or []
         if todos and not all(t.get("status") == "completed" for t in todos):
             return ReflectionAction(verdict="pass", reflection_items=[], plan=None, guidance="", rollback_to="")
@@ -125,7 +157,7 @@ class SufficiencyStrategy:
         )
         try:
             from langchain_core.messages import HumanMessage
-            resp = self._llm.invoke([HumanMessage(content=prompt)])
+            resp = self._llm.invoke([HumanMessage(content=prompt)], config={"tags": ["internal_llm"]})
             content = getattr(resp, "content", str(resp))
             import json
             # 容错解析 JSON

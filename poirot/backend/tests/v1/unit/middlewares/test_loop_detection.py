@@ -100,6 +100,31 @@ def test_middleware_loop_clears_tool_calls_and_jumps() -> None:
     assert "web_search" in msgs[1].content
 
 
+def test_middleware_loop_reuses_id_for_pairing() -> None:
+    """Regression: cleared AIMessage must reuse original id so add_messages
+    replaces (not appends). Otherwise the original tool_calls-bearing AIMessage
+    stays in history; jump_to model skips ToolNode → no ToolMessage → 400
+    'insufficient tool messages following tool_calls' on next model call."""
+    mw = LoopDetectionMiddleware()
+    last_ai = AIMessage(
+        id="ai-original-id",
+        content="",
+        tool_calls=[{"name": "web_search", "args": {"query": "x"}, "id": "tc1", "type": "tool_call"}],
+        additional_kwargs={"tool_calls": [{"name": "web_search", "args": {"query": "x"}, "id": "tc1"}]},
+    )
+    state = {"messages": [_ai_with_tool("web_search", {"query": "x"}), _ai_with_tool("web_search", {"query": "x"}), last_ai]}
+    result = mw.after_model(state, runtime=None)
+    assert result is not None
+    cleared = result["messages"][0]
+    assert isinstance(cleared, AIMessage)
+    # id 复用 → add_messages 替换原消息，非追加
+    assert cleared.id == "ai-original-id"
+    # additional_kwargs 里陈旧 tool_calls 必须剥掉，防 _has_tool_call_intent 误判
+    assert "tool_calls" not in (cleared.additional_kwargs or {})
+    assert cleared.tool_calls == []
+    assert cleared.additional_kwargs.get("loop_detected") == "web_search"
+
+
 def test_middleware_no_tool_calls_on_last_ai_returns_none() -> None:
     mw = LoopDetectionMiddleware()
     # 最后一条 AIMessage 无 tool_calls（模型想退出），即使历史有重复也不熔断

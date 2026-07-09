@@ -84,11 +84,12 @@ class PoirotStreamClient:
 
         seen_ids: set[str] = set()
         streamed_ids: set[str] = set()
+        first_values_frame = True
 
         async for item in self._graph.astream(
             state,
             config=self._config,
-            stream_mode=["values", "messages"],
+            stream_mode=["values", "messages", "custom"],
         ):
             # 多 mode 时 astream 产 (mode, chunk) tuple
             if isinstance(item, tuple) and len(item) == 2:
@@ -97,12 +98,33 @@ class PoirotStreamClient:
             else:
                 mode, chunk = "values", item
 
+            # custom mode: middleware/strategy 用 get_stream_writer() 发的 custom event
+            # （如 DefaultStrategy compaction_start/progress/end）
+            if mode == "custom":
+                if isinstance(chunk, dict) and "type" in chunk:
+                    yield StreamEvent(
+                        type=chunk["type"],
+                        content=chunk.get("content", ""),
+                        tool_name=chunk.get("tool_name"),
+                        tool_args=chunk.get("tool_args"),
+                        tool_result=chunk.get("tool_result"),
+                        msg_id=chunk.get("msg_id"),
+                    )
+                continue
+
             if mode == "messages":
                 # messages mode: (message_chunk, metadata) tuple
                 if isinstance(chunk, tuple) and len(chunk) == 2:
                     msg_chunk, _metadata = chunk
                 else:
-                    msg_chunk = chunk
+                    msg_chunk, chunk
+
+                # 过滤内部 LLM 调用（summarizer/reporter/reflection）——tag=internal_llm
+                # 防止压缩/报告/反思的 model.invoke 输出泄漏到 CLI 当作 answer 渲染
+                if isinstance(_metadata, dict):
+                    _tags = _metadata.get("tags") or []
+                    if "internal_llm" in _tags:
+                        continue
 
                 msg_id = getattr(msg_chunk, "id", None)
 
@@ -160,6 +182,15 @@ class PoirotStreamClient:
             # mode == "values": 完整状态快照——去重 + done 检测
             if mode == "values" and isinstance(chunk, dict):
                 messages = chunk.get("messages", [])
+                # 第一帧 values 含 checkpoint 恢复的旧 messages，预填 seen_ids 跳过，防重复输出
+                if first_values_frame:
+                    for msg in messages:
+                        msg_id = getattr(msg, "id", None)
+                        if msg_id:
+                            seen_ids.add(msg_id)
+                            streamed_ids.add(msg_id)
+                    first_values_frame = False
+                    continue
                 for msg in messages:
                     msg_id = getattr(msg, "id", None)
                     if msg_id and msg_id in seen_ids:

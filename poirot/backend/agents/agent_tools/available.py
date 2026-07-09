@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # 工具 group 映射（MVP 名称映射，未来可迁 config tools[].group 字段）。
 # core: 基础工具，default + expert 都加载（省上下文）
 # deferred: 深度工具，仅 expert 加载
-CORE_TOOL_NAMES: set[str] = {"web_search", "browse_page"}
+CORE_TOOL_NAMES: set[str] = {"web_search", "browse_page", "read_snapshot"}
 
 
 def _tool_group(name: str) -> str:

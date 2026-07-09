@@ -91,8 +91,11 @@ def _merge_metadata(current: dict[str, Any], incoming: dict[str, Any]) -> dict[s
 
 
 def _merge_final_report(current: str | None, incoming: str | None) -> str | None:
-    if current and incoming and current != incoming:
-        raise ReducerConflictError("final_report conflict")
+    """last-write-wins：多轮 chat 每个 run 可覆盖旧报告。
+
+    原冲突报错设计只适用单次 run，checkpointer 跨 run 持久化后
+    新 run 写 final_report 必触发 ReducerConflictError 崩溃。
+    """
     return incoming if incoming is not None else current
 
 
@@ -199,3 +202,14 @@ def merge_governance(current: dict | None, incoming: dict | None) -> dict | None
         else:
             merged[key] = value
     return merged
+
+
+def merge_tagged_context(current: dict | None, incoming: dict | None) -> dict | None:
+    """Reducer for ThreadState.tagged_context — last-write-wins.
+
+    存每轮 ContextAssembler 渲染的标签序列快照（trace 审计，对比"模型看到的"
+    vs"state 存的"）。incoming None 保留 current，否则 incoming 替换。
+    """
+    if incoming is None:
+        return current
+    return incoming

@@ -20,7 +20,7 @@ class RuntimeConfig:
 class ContextGovernanceConfig:
     """上下文治理层配置（策略层）。公共层 middleware 固定挂，不经此配置。"""
 
-    strategy: str = "minimal"
+    strategy: str = "default"
     params: dict[str, Any] = field(default_factory=dict)
 
 

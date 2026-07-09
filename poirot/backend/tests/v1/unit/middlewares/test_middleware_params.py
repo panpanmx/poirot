@@ -104,10 +104,10 @@ def test_reflection_middleware_expert_uses_sufficiency_strategy() -> None:
 
 
 class _FakeModel:
-    def invoke(self, messages):
+    def invoke(self, messages, **kwargs):
         return SimpleNamespace(content="合成报告")
 
-    async def ainvoke(self, messages):
+    async def ainvoke(self, messages, **kwargs):
         return SimpleNamespace(content="合成报告")
 
 
@@ -139,3 +139,54 @@ def test_report_auto_synthesize_true_skips_when_no_observations() -> None:
     state = {"observations": [], "sources": []}
     result = mw.after_agent(state, _runtime())
     assert result is None
+
+
+# --------------------------------------------------------------------------- #
+# SufficiencyStrategy 问题类型分类
+# --------------------------------------------------------------------------- #
+
+
+def test_sufficiency_personal_question_passes() -> None:
+    """非研究类问题（无关键词 + 无 observations + 无 todos）→ 直接 pass + 提示。"""
+    strategy = SufficiencyStrategy()
+    state = {"user_input": "我女儿明年生日该几岁了", "research_question": "我女儿明年生日该几岁了"}
+    action = strategy.reflect(state, _runtime())
+    assert action["verdict"] == "pass"
+    assert "不需要深度研究" in action["guidance"]
+
+
+def test_sufficiency_research_question_normal_check() -> None:
+    """研究类问题（含关键词）→ 走原有充分性判断。"""
+    strategy = SufficiencyStrategy()
+    state = {"user_input": "深度调研 SpaceX IPO", "research_question": "深度调研 SpaceX IPO"}
+    action = strategy.reflect(state, _runtime())
+    # 无 todos + 无 observations → pass（原有逻辑）
+    assert action["verdict"] == "pass"
+    assert action["guidance"] == ""  # 无提示（非 personal）
+
+
+def test_sufficiency_mixed_with_observations_normal_check() -> None:
+    """有 observations 的非研究问题 → mixed → 走原有逻辑（不判 personal）。"""
+    strategy = SufficiencyStrategy()
+    state = {
+        "user_input": "推荐个生日礼物",
+        "research_question": "推荐个生日礼物",
+        "observations": [{"observation_id": "obs-1", "step_id": None, "content": "test", "source_refs": (), "created_at": ""}],
+    }
+    action = strategy.reflect(state, _runtime())
+    # 有 observations → mixed → 走原有逻辑（无 todos → pass）
+    assert action["verdict"] == "pass"
+    assert action["guidance"] == ""  # 无提示（非 personal）
+
+
+def test_sufficiency_personal_with_todos_not_personal() -> None:
+    """有 todos 的非研究问题 → mixed（有计划 = 有研究行为）→ 走原有逻辑。"""
+    strategy = SufficiencyStrategy()
+    state = {
+        "user_input": "帮我选个礼物",
+        "todos": [{"content": "搜索礼物推荐", "status": "completed"}],
+    }
+    action = strategy.reflect(state, _runtime())
+    # 有 todos → mixed → 走原有逻辑（todos 全完成 + 无 observations → pass）
+    assert action["verdict"] == "pass"
+    assert action["guidance"] == ""  # 无提示（非 personal）

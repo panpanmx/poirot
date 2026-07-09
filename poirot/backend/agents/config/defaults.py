@@ -39,7 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "log_level": "INFO",
     },
     "context_governance": {
-        "strategy": "minimal",
+        "strategy": "default",
         "params": {},
     },
 }

@@ -95,11 +95,21 @@ class LoopDetectionMiddleware(AgentMiddleware):
         if not last_ai or not getattr(last_ai, "tool_calls", None):
             return None
 
-        # 清 tool_calls 强制模型给最终答案，保留 content + 标记 loop_detected
+        # 清 tool_calls 强制模型给最终答案，保留 content + 标记 loop_detected。
+        # 复用原 id → add_messages 按 id 替换原消息（非追加），否则原 AIMessage 的
+        # tool_calls 仍留 history，jump_to model 跳过 ToolNode 后无 ToolMessage 配对 →
+        # 下一轮 model 调用 400: insufficient tool messages following tool_calls。
+        # 同步剥 additional_kwargs.tool_calls/function_call 防 _has_tool_call_intent 误判。
+        new_kwargs = {
+            k: v for k, v in (last_ai.additional_kwargs or {}).items()
+            if k not in ("tool_calls", "function_call")
+        }
+        new_kwargs["loop_detected"] = loop_tool
         cleared = AIMessage(
+            id=last_ai.id,
             content=last_ai.content or "",
             tool_calls=[],
-            additional_kwargs={**last_ai.additional_kwargs, "loop_detected": loop_tool},
+            additional_kwargs=new_kwargs,
         )
         guidance = HumanMessage(
             name="loop_detection",

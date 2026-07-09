@@ -78,9 +78,22 @@ def test_metadata_cannot_override_core_field_semantics() -> None:
         merge_thread_state({}, {"metadata": {"plan": "hidden"}})
 
 
-def test_final_report_conflict_fails_closed() -> None:
-    with pytest.raises(ReducerConflictError, match="final_report conflict"):
-        merge_thread_state({"final_report": "A"}, {"final_report": "B"})
+def test_final_report_last_write_wins() -> None:
+    """final_report reducer 改 last-write-wins：多轮 chat 覆盖旧报告不崩溃。"""
+    merged = merge_thread_state({"final_report": "报告A"}, {"final_report": "报告B"})
+    assert merged["final_report"] == "报告B"
+
+
+def test_final_report_none_preserves_current() -> None:
+    """incoming=None 时保留当前值。"""
+    merged = merge_thread_state({"final_report": "报告A"}, {"final_report": None})
+    assert merged["final_report"] == "报告A"
+
+
+def test_final_report_first_write() -> None:
+    """首次写入（current=None）。"""
+    merged = merge_thread_state({}, {"final_report": "报告A"})
+    assert merged["final_report"] == "报告A"
 
 
 def test_errors_are_appended_and_limited() -> None:

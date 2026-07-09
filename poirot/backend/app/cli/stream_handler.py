@@ -77,6 +77,12 @@ class StreamRenderer:
             self._render_done()
         elif etype == "error":
             self._render_error(event)
+        elif etype == "compaction_start":
+            self._render_compaction_start(event)
+        elif etype == "compaction_progress":
+            self._render_compaction_progress(event)
+        elif etype == "compaction_end":
+            self._render_compaction_end(event)
 
     def _render_thinking(self, event: StreamEvent) -> None:
         if not self.state["thinking_enabled"]:
@@ -131,6 +137,17 @@ class StreamRenderer:
     def _render_error(self, event: StreamEvent) -> None:
         self._stop_spinner()
         self.console.print(f"\n[red]✗ {event['content']}[/red]")
+
+    def _render_compaction_start(self, event: StreamEvent) -> None:
+        stage = event.get("tool_name") or ""
+        self.console.print(f"\n[dim][compaction] {stage} 触发...[/dim]")
+
+    def _render_compaction_progress(self, event: StreamEvent) -> None:
+        self.console.print(f"[dim]  {event['content']}[/dim]")
+
+    def _render_compaction_end(self, event: StreamEvent) -> None:
+        saved = event.get("tool_result") or ""
+        self.console.print(f"[dim][compaction] 完成 {event['content']} (saved={saved})[/dim]")
 
     def _stop_spinner(self) -> None:
         live = self.state.get("_live")

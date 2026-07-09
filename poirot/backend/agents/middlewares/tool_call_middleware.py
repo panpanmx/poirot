@@ -8,12 +8,13 @@ FD17-FD19：最外层 wrap_tool_call，看到所有工具最终结果 + 捕获�
 from __future__ import annotations
 
 import re
+import threading
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any, override
 
-from langchain.agents.middleware.types import AgentMiddleware
+from langchain.agents.middleware.types import AgentMiddleware, hook_config
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.runtime import Runtime
@@ -144,9 +145,53 @@ def _field(item: Any, name: str) -> Any:
 
 
 class ToolCallMiddleware(AgentMiddleware):
-    """工具调用账本：成败都记 errors，per-tool 重试/禁工具，硬预算兜底。"""
+    """工具调用账本：成败都记 errors，per-tool 重试/禁工具，硬预算兜底。
+
+    failure_summary + budget_exhausted 提示用队列延迟到 before_model 注入，
+    避免在 wrap_tool_call 注入 HumanMessage 插在并行 tool_calls 的 ToolMessage 之间
+    破坏 API pairing（AIMessage(tool_calls) 后必须紧跟 ToolMessage）。
+    """
 
     state_schema = ThreadState  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._pending_summaries: dict[tuple[str, str], list[str]] = {}
+        self._run_baselines: dict[tuple[str, str], int] = {}
+
+    def _queue_key(self, runtime: Runtime) -> tuple[str, str]:
+        tid = str(_get_runtime_value(runtime, "thread_id", None) or "default")
+        rid = str(_get_runtime_value(runtime, "run_id", None) or "default")
+        return (tid, rid)
+
+    def _queue_summary(self, runtime: Runtime, text: str) -> None:
+        key = self._queue_key(runtime)
+        with self._lock:
+            self._pending_summaries.setdefault(key, []).append(text)
+
+    def _drain_summaries(self, runtime: Runtime) -> list[str]:
+        key = self._queue_key(runtime)
+        with self._lock:
+            return self._pending_summaries.pop(key, None) or []
+
+    def _set_baseline(self, runtime: Runtime, count: int) -> None:
+        key = self._queue_key(runtime)
+        with self._lock:
+            self._run_baselines[key] = count
+
+    def _run_tool_count(self, runtime: Runtime, errors: list) -> int:
+        """per-run 工具调用数 = len(errors) - baseline（baseline 在 before_agent 记录）。"""
+        key = self._queue_key(runtime)
+        with self._lock:
+            baseline = self._run_baselines.get(key, 0)
+        return max(0, len(errors) - baseline)
+
+    def _run_errors_slice(self, runtime: Runtime, errors: list) -> list:
+        """返回当前 run 的 errors 切片（baseline 之后），用于 per-run retry budget。"""
+        key = self._queue_key(runtime)
+        with self._lock:
+            baseline = self._run_baselines.get(key, 0)
+        return errors[baseline:] if baseline > 0 else errors
 
     def _journal(self, runtime: Runtime) -> Any:
         return _get_runtime_value(runtime, "journal", None)
@@ -177,12 +222,14 @@ class ToolCallMiddleware(AgentMiddleware):
         call_id = request.tool_call.get("id", "")
         state = request.state
         errors = state.get("errors") or [] if isinstance(state, dict) else []
+        # per-run errors slice 用于 retry budget 判定
+        run_errors = self._run_errors_slice(runtime, errors)
 
         # 判定成败 + 分类
         if exc is not None:
             error_type = _classify_exception(exc)
             kind = "failure"
-            attempt = _latest_attempt(errors, tool_name) + 1
+            attempt = _latest_attempt(run_errors, tool_name) + 1
             reason = _reason_for(error_type)
             err = AgentError(
                 error_id=_make_id("err"), stage="tool",
@@ -203,7 +250,7 @@ class ToolCallMiddleware(AgentMiddleware):
             if fail:
                 error_type, reason = fail
                 kind = "failure"
-                attempt = _latest_attempt(errors, tool_name) + 1
+                attempt = _latest_attempt(run_errors, tool_name) + 1
                 err = AgentError(
                     error_id=_make_id("err"), stage="tool",
                     message=f"{tool_name}: 业务失败 {reason}", tool_name=tool_name,
@@ -221,47 +268,73 @@ class ToolCallMiddleware(AgentMiddleware):
                     related_refs=(call_id,), created_at=_now_iso(),
                 )
 
-        # 记账本
-        new_errors_count = _total_calls(errors) + 1
+        # 记账本——per-run 计数
+        run_count = self._run_tool_count(runtime, errors) + 1
         update: dict[str, Any] = {"errors": [err]}
 
         # 守卫：result 为 None（handler 返 None 无异常）—— 补空 ToolMessage 保 tool_call 配对完整
         if result is None:
             result = ToolMessage(content="", tool_call_id=call_id)
 
-        # F8.2：失败摘要递进注入（3/6/9）
+        # F8.2：失败摘要递进注入（3/6/9）—— 队列延迟到 before_model，避免插在并行 ToolMessage 间破坏 pairing
         if kind == "failure" and attempt in _SUMMARY_THRESHOLDS:
             summary = self._build_failure_summary(errors + [err], tool_name)
-            update["messages"] = [HumanMessage(
-                name="tool_failure_summary",
-                additional_kwargs={"hide_from_ui": True},
-                content=f"<system_reminder>\n{summary}\n</system_reminder>",
-            )]
+            self._queue_summary(request.runtime, summary)
 
-        # F8.5：硬预算兜底
-        if new_errors_count >= _HARD_BUDGET:
-            update.setdefault("messages", []).append(HumanMessage(
-                name="tool_budget_exhausted",
-                additional_kwargs={"hide_from_ui": True},
-                content=f"<system_reminder>\n工具调用总数已达 {new_errors_count}（预算 {_HARD_BUDGET}），必须收尾报告。\n</system_reminder>",
-            ))
-            self._emit(runtime, "tool.budget_exhausted", {"count": new_errors_count, "max": _HARD_BUDGET})
+        # F8.5：硬预算兜底 —— per-run
+        if run_count >= _HARD_BUDGET:
+            self._queue_summary(
+                runtime,
+                f"本轮工具调用总数已达 {run_count}（预算 {_HARD_BUDGET}），必须收尾报告。",
+            )
+            self._emit(runtime, "tool.budget_exhausted", {"count": run_count, "max": _HARD_BUDGET})
 
         # 合并：若 result 已是 Command（内层 Evidence 返回），合并 errors 进 update
         if isinstance(result, Command):
             merged = dict(result.update)
             merged.setdefault("errors", []).extend(update["errors"])
-            if "messages" in update:
-                merged.setdefault("messages", []).extend(update["messages"])
             return Command(update=merged)
-        # 非 Command（原 ToolMessage 或异常）：总返 Command 带 errors（+ 注入的 messages）
-        if "messages" in update:
-            # 有摘要/预算注入，需把原 result 也放进 messages
-            update.setdefault("messages", []).insert(0, result) if result is not None else None
-            return Command(update=update)
-        # 成功无注入：errors + 原 result 进 messages
+        # 非 Command（原 ToolMessage 或异常）：返 Command 带 errors + result ToolMessage
         update["messages"] = [result] if result is not None else []
         return Command(update=update)
+
+    @hook_config(can_jump_to=["model"])
+    @override
+    def before_model(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
+        """drain 队列的 failure_summary / budget_exhausted 提示，在 before_model 注入。
+
+        before_model 在 ToolNode 之后执行（ToolMessage 已全部就位），
+        HumanMessage 注入在 ToolMessage 之后不破坏 AIMessage(tool_calls)→ToolMessage pairing。
+        """
+        summaries = self._drain_summaries(runtime)
+        if not summaries:
+            return None
+        combined = "\n\n".join(dict.fromkeys(summaries))
+        return {"messages": [HumanMessage(
+            name="tool_failure_summary",
+            additional_kwargs={"hide_from_ui": True},
+            content=f"<system_reminder>\n{combined}\n</system_reminder>",
+        )]}
+
+    @hook_config(can_jump_to=["model"])
+    @override
+    async def abefore_model(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
+        return self.before_model(state, runtime)
+
+    @override
+    def before_agent(self, state: Any, runtime: Runtime) -> dict[str, Any] | None:
+        # 记录 errors 基线（per-run 工具调用计数基准）
+        errors = state.get("errors") if isinstance(state, dict) else None
+        self._set_baseline(runtime, len(errors or []))
+        # 清理其他 run 的陈旧队列 + 基线
+        tid = str(_get_runtime_value(runtime, "thread_id", None) or "default")
+        rid = str(_get_runtime_value(runtime, "run_id", None) or "default")
+        with self._lock:
+            stale = [k for k in list(self._pending_summaries) if k[0] == tid and k[1] != rid]
+            for k in stale:
+                self._pending_summaries.pop(k, None)
+                self._run_baselines.pop(k, None)
+        return None
 
     @override
     def wrap_tool_call(
@@ -270,9 +343,12 @@ class ToolCallMiddleware(AgentMiddleware):
         tool_name = request.tool_call.get("name", "")
         state = request.state
         errors = state.get("errors") or [] if isinstance(state, dict) else []
+        run_count = self._run_tool_count(request.runtime, errors)
+        # per-run errors slice：只看当前 run 的 errors（baseline 后），防跨 run 持久禁工具
+        run_errors = self._run_errors_slice(request.runtime, errors)
 
-        # F8.3：禁工具短路
-        if _latest_attempt(errors, tool_name) >= _RETRY_BUDGET:
+        # F8.3：禁工具短路——per-run retry budget
+        if _latest_attempt(run_errors, tool_name) >= _RETRY_BUDGET:
             self._emit(request.runtime, "tool.blocked", {"tool": tool_name, "reason": "retry_budget_exhausted"})
             failure_msg = ToolMessage(
                 content=f"⚠️ 工具 {tool_name} 已达重试上限（{_RETRY_BUDGET}），已被禁用，请换方法或收尾。",
@@ -281,11 +357,11 @@ class ToolCallMiddleware(AgentMiddleware):
             )
             return Command(update={"messages": [failure_msg]})
 
-        # F8.5：硬预算短路——总调用数达上限，拒绝所有后续工具，强制模型收尾走 Reporter
-        if _total_calls(errors) >= _HARD_BUDGET:
-            self._emit(request.runtime, "tool.budget_exhausted", {"count": _total_calls(errors), "max": _HARD_BUDGET})
+        # F8.5：硬预算短路——per-run 调用数达上限，拒绝所有后续工具，强制模型收尾
+        if run_count >= _HARD_BUDGET:
+            self._emit(request.runtime, "tool.budget_exhausted", {"count": run_count, "max": _HARD_BUDGET})
             failure_msg = ToolMessage(
-                content=f"⚠️ 工具调用总数已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
+                content=f"⚠️ 本轮工具调用已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
                 tool_call_id=request.tool_call.get("id", ""),
                 status="error",
             )
@@ -304,8 +380,10 @@ class ToolCallMiddleware(AgentMiddleware):
         tool_name = request.tool_call.get("name", "")
         state = request.state
         errors = state.get("errors") or [] if isinstance(state, dict) else []
+        run_count = self._run_tool_count(request.runtime, errors)
+        run_errors = self._run_errors_slice(request.runtime, errors)
 
-        if _latest_attempt(errors, tool_name) >= _RETRY_BUDGET:
+        if _latest_attempt(run_errors, tool_name) >= _RETRY_BUDGET:
             self._emit(request.runtime, "tool.blocked", {"tool": tool_name, "reason": "retry_budget_exhausted"})
             failure_msg = ToolMessage(
                 content=f"⚠️ 工具 {tool_name} 已达重试上限（{_RETRY_BUDGET}），已被禁用，请换方法或收尾。",
@@ -314,11 +392,11 @@ class ToolCallMiddleware(AgentMiddleware):
             )
             return Command(update={"messages": [failure_msg]})
 
-        # F8.5：硬预算短路
-        if _total_calls(errors) >= _HARD_BUDGET:
-            self._emit(request.runtime, "tool.budget_exhausted", {"count": _total_calls(errors), "max": _HARD_BUDGET})
+        # F8.5：硬预算短路——per-run
+        if run_count >= _HARD_BUDGET:
+            self._emit(request.runtime, "tool.budget_exhausted", {"count": run_count, "max": _HARD_BUDGET})
             failure_msg = ToolMessage(
-                content=f"⚠️ 工具调用总数已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
+                content=f"⚠️ 本轮工具调用已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
                 tool_call_id=request.tool_call.get("id", ""),
                 status="error",
             )

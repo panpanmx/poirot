@@ -13,34 +13,29 @@ from poirot.backend.agents.context_engineering.builder import (
 from poirot.backend.agents.context_engineering.registry import get_strategy_class
 from poirot.backend.agents.leader.agent import LeaderAgent
 from poirot.backend.agents.leader.factory import make_lead_agent
-from poirot.backend.agents.middlewares.budget_hard_stop_middleware import (
-    BudgetHardStopMiddleware,
-)
-from poirot.backend.agents.middlewares.date_injector_middleware import (
-    DateInjectorMiddleware,
-)
 from poirot.backend.agents.middlewares.message_normalizer_middleware import (
     MessageNormalizerMiddleware,
+)
+from poirot.backend.agents.middlewares.tagged_context_middleware import (
+    TaggedContextMiddleware,
 )
 from poirot.backend.agents.reporting.markdown_reporter import MarkdownReporter
 
 
-def test_minimal_unregistered_assembles_public3_only() -> None:
-    """minimal 非 bundle 名，未注册 → 仅公共 3，跳过 StrategyMiddleware。"""
+def test_minimal_unregistered_assembles_public2_only() -> None:
+    """minimal 非 bundle 名，未注册 → 仅公共 2，跳过 StrategyMiddleware。"""
     ms = build_governance_middlewares(ContextGovernanceConfig(strategy="minimal"))
-    assert len(ms) == 3
+    assert len(ms) == 2
     assert [type(m).__name__ for m in ms] == [
-        "DateInjectorMiddleware",
+        "TaggedContextMiddleware",
         "MessageNormalizerMiddleware",
-        "BudgetHardStopMiddleware",
     ]
 
 
-def test_public_3_always_present() -> None:
+def test_public_2_always_present() -> None:
     ms = build_governance_middlewares(ContextGovernanceConfig(strategy="minimal"))
-    assert any(isinstance(m, DateInjectorMiddleware) for m in ms)
+    assert any(isinstance(m, TaggedContextMiddleware) for m in ms)
     assert any(isinstance(m, MessageNormalizerMiddleware) for m in ms)
-    assert any(isinstance(m, BudgetHardStopMiddleware) for m in ms)
 
 
 def test_unknown_strategy_class_raises() -> None:
@@ -48,10 +43,10 @@ def test_unknown_strategy_class_raises() -> None:
         get_strategy_class("nonexistent")
 
 
-def test_default_config_strategy_minimal() -> None:
+def test_default_config_strategy_default() -> None:
     from poirot.backend.agents.config.loader import load_config
 
-    assert load_config().context_governance.strategy == "minimal"
+    assert load_config().context_governance.strategy == "default"
 
 
 def test_make_lead_agent_with_governance_builds_graph() -> None:

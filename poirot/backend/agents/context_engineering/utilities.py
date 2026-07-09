@@ -14,6 +14,56 @@ logger = logging.getLogger(__name__)
 _TIKTOKEN_RETRY_COOLDOWN_S = 600
 _DEFAULT_WINDOW = 128_000
 
+# model_name → window 映射表。长前缀优先（避免 "gpt-4" 误匹配 "gpt-4o"）。
+# langchain ChatModel 不一定暴露 max_input_tokens，靠 model_name 前缀匹配兜底。
+_MODEL_WINDOW_MAP: dict[str, int] = {
+    # OpenAI（长前缀优先，避免 gpt-4 误匹配 gpt-4o）
+    "gpt-4o-mini": 128_000,
+    "gpt-4o": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4-110": 128_000,
+    "gpt-4": 8_192,
+    "gpt-3.5-turbo": 16_385,
+    "o3-mini": 200_000,
+    "o3": 200_000,
+    "o1-mini": 128_000,
+    "o1": 200_000,
+    # Anthropic
+    "claude-3-5-sonnet": 200_000,
+    "claude-3-5-haiku": 200_000,
+    "claude-3-opus": 200_000,
+    "claude-3-sonnet": 200_000,
+    "claude-3-haiku": 200_000,
+    # DeepSeek
+    "deepseek-v4-flash": 200_000,
+    "deepseek-reasoner": 64_000,
+    "deepseek-chat": 64_000,
+    # Qwen
+    "qwen-max": 32_768,
+    "qwen-plus": 131_072,
+    "qwen-turbo": 131_072,
+    "qwen2.5": 131_072,
+    "qwen": 32_768,
+    # GLM
+    "glm-4-plus": 131_072,
+    "glm-4": 131_072,
+    # Yi
+    "yi-large": 32_768,
+    "yi-34b": 4_096,
+    # Moonshot
+    "moonshot-v1-128k": 131_072,
+    "moonshot-v1-32k": 32_768,
+    "moonshot-v1-8k": 8_192,
+    "moonshot-v1": 8_192,
+    # Stepfun
+    "step-2": 8_192,
+    "step-1": 8_192,
+    # MiniMax
+    "abab6.5": 245_760,
+    # vLLM / openai-compatible 默认
+    "vllm": 128_000,
+}
+
 _ENCODING_CACHE: dict[str, Any] = {}
 _last_failure_ts: float = 0.0
 _loading_sentinel = object()
@@ -97,7 +147,7 @@ def token_counter(messages: list, model_name: str | None = None) -> int:
 
 
 def resolve_window_size(model: Any) -> int:
-    """取模型上下文窗口大小。max_tokens/_identifying_params/default 128000。"""
+    """取模型上下文窗口大小。model 属性优先 → _identifying_params → model_name 映射表前缀匹配 → default 128000。"""
     for attr in ("max_input_tokens", "model_max_tokens", "max_tokens"):
         value = getattr(model, attr, None)
         if isinstance(value, int) and value > 0:
@@ -113,4 +163,9 @@ def resolve_window_size(model: Any) -> int:
             v = params.get(k)
             if isinstance(v, int) and v > 0:
                 return v
+    model_name = getattr(model, "model_name", None) or getattr(model, "model", None)
+    if isinstance(model_name, str):
+        for prefix, window in _MODEL_WINDOW_MAP.items():
+            if model_name.startswith(prefix):
+                return window
     return _DEFAULT_WINDOW

@@ -32,6 +32,7 @@ def _build_middlewares(
     expert_mode: bool,
     model: BaseChatModel | None = None,
     context_governance: Any = None,
+    summarize_model: Any = None,
 ) -> list:
     """全模式全挂 middleware，参数化控制行为差异。
 
@@ -50,7 +51,7 @@ def _build_middlewares(
             build_governance_middlewares,
         )
 
-        middlewares.extend(build_governance_middlewares(context_governance))
+        middlewares.extend(build_governance_middlewares(context_governance, model=model, summarize_model=summarize_model))
     middlewares.extend([
         SystemContextMiddleware(),
         TitleMiddleware(),
@@ -102,6 +103,16 @@ def make_lead_agent(
 
     model = registry.get_model("researcher")
 
+    # summarize_model 独立取：config.params.summarize_model 配名 → registry 取独立 model；否则 None（fallback research model）
+    summarize_model = None
+    if context_governance is not None:
+        sm_name = (getattr(context_governance, "params", None) or {}).get("summarize_model")
+        if sm_name:
+            try:
+                summarize_model = registry.get_model(sm_name)
+            except Exception:
+                summarize_model = None
+
     # tool groups: default=core, expert=core+deferred
     groups = ["core", "deferred"] if resolved_expert else ["core"]
     tools: list[BaseTool] = []
@@ -117,7 +128,7 @@ def make_lead_agent(
         graph=create_agent(
             model=model,
             tools=tools or None,
-            middleware=_build_middlewares(resolved_expert, model, context_governance),
+            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model),
             system_prompt=apply_prompt_template(expert_mode=resolved_expert),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),

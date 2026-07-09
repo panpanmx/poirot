@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from poirot.backend.agents.state.reducers import merge_governance
 from poirot.backend.agents.context_engineering.utilities import (
     _char_estimate,
+    resolve_window_size,
     token_counter,
 )
 
@@ -66,3 +69,30 @@ def test_char_estimate_cjk_aware() -> None:
 
 def test_char_estimate_empty() -> None:
     assert _char_estimate([]) == 0
+
+
+# ---------- resolve_window_size ----------
+
+
+def test_resolve_window_size_attr() -> None:
+    """model 属性 max_input_tokens 优先。"""
+    model = SimpleNamespace(max_input_tokens=8000)
+    assert resolve_window_size(model) == 8000
+
+
+def test_resolve_window_size_model_name_map() -> None:
+    """无属性 → model_name 映射表精确匹配。"""
+    model = SimpleNamespace(model_name="deepseek-chat")
+    assert resolve_window_size(model) == 64_000
+
+
+def test_resolve_window_size_prefix_match() -> None:
+    """model_name 前缀匹配（带日期后缀）。"""
+    model = SimpleNamespace(model_name="gpt-4o-2024-08-06")
+    assert resolve_window_size(model) == 128_000
+
+
+def test_resolve_window_size_fallback() -> None:
+    """无属性无 model_name → default 128000。"""
+    model = SimpleNamespace()
+    assert resolve_window_size(model) == 128_000
