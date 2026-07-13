@@ -29,6 +29,20 @@ _PIXEL_POIROT = [
 ]
 
 
+def render_logo() -> Text:
+    """仅返回渐变 ASCII logo（不含版本/tagline），供 TUI 居中展示。
+
+    每行独立着色，行尾不留多余空格，便于 ``width: auto`` 容器精确居中。
+    """
+    result = Text(justify="center")
+    for idx, row in enumerate(_PIXEL_POIROT):
+        color = _GRADIENT[idx % len(_GRADIENT)]
+        result.append(row, style=color)
+        if idx < len(_PIXEL_POIROT) - 1:
+            result.append("\n")
+    return result
+
+
 def render_banner(text: str = "POIROT") -> Text:
     """返回 rich Text 对象，供 console.print() 渲染。
 

@@ -12,6 +12,7 @@ dependencies = [
     "langchain-mcp-adapters>=0.1.0",
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.0",
+    "textual>=0.40.0",
     "ddgs>=9.0.0",
 ]
 

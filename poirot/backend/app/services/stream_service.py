@@ -15,15 +15,24 @@ from typing import Any, AsyncIterator, TypedDict
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
 
 
-class StreamEvent(TypedDict):
+class _StreamEventBase(TypedDict):
     """流式事件标准化结构，供 CLI 消费渲染。"""
 
-    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "done" | "error"
+    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "done" | "error" | "budget_update"
     content: str
     tool_name: str | None
     tool_args: dict | None
     tool_result: str | None
     msg_id: str | None
+
+
+class StreamEvent(_StreamEventBase, total=False):
+    """budget_update 事件携带的上下文预算快照（{total, fraction, window}）。
+
+    其他事件类型不设置此字段——消费者用 ``event.get("budget")`` 取值，缺省时返回 None。
+    """
+
+    budget: dict | None
 
 
 def _extract_text(content: Any) -> str:
@@ -84,6 +93,7 @@ class PoirotStreamClient:
 
         seen_ids: set[str] = set()
         streamed_ids: set[str] = set()
+        seen_tool_call_ids: set[str] = set()
         first_values_frame = True
 
         async for item in self._graph.astream(
@@ -150,13 +160,19 @@ class PoirotStreamClient:
                             tool_name=None, tool_args=None, tool_result=None, msg_id=msg_id,
                         )
 
-                    # tool_calls → tool_start
+                    # tool_calls → tool_start（流式增量 chunk 会为同一 tool_call 重复产出——
+                    # 首个 delta 通常带完整 name，后续只带 args 增量、name 常为空——按 id 去重
+                    # + 跳过空 name，否则渲染层会看到好几行 "unknown"）
                     tool_calls = getattr(msg_chunk, "tool_calls", None) or []
                     for tc in tool_calls:
                         if isinstance(tc, dict):
                             tc_name = tc.get("name", "")
                             tc_args = tc.get("args", {})
                             tc_id = tc.get("id", "")
+                            if not tc_name or (tc_id and tc_id in seen_tool_call_ids):
+                                continue
+                            if tc_id:
+                                seen_tool_call_ids.add(tc_id)
                             yield StreamEvent(
                                 type="tool_start", content="",
                                 tool_name=tc_name,
@@ -181,6 +197,39 @@ class PoirotStreamClient:
 
             # mode == "values": 完整状态快照——去重 + done 检测
             if mode == "values" and isinstance(chunk, dict):
+                # budget_update：从 governance.default.budget 提取上下文占用快照
+                # governance/budget 缺失时不 yield（None 保护，不报错）
+                budget = (
+                    chunk.get("governance", {})
+                    .get("default", {})
+                    .get("budget", {})
+                )
+                # 过滤 init_budget 的"全零"快照：DefaultStrategy.before_agent 会把
+                # budget 重置成 {total:0, fraction:0.0, window:0}，下一帧 values 把这
+                # 个零状态 yield 出去会让 TUI/CLI 的占用率显示先掉到 0.0% 再恢复——
+                # 视觉闪烁。track() 跑过后 window 恒 > 0（resolve_window_size 兜底
+                # 128000），fraction 也恒 > 0（messages 非空时 token_counter > 0），
+                # 所以"window == 0"是 init_budget 独有签名，直接跳过即可。
+                if (
+                    budget
+                    and budget.get("total") is not None
+                    and budget.get("fraction") is not None
+                    and (budget.get("window") or 0) > 0
+                ):
+                    yield StreamEvent(
+                        type="budget_update",
+                        content="",
+                        tool_name=None,
+                        tool_args=None,
+                        tool_result=None,
+                        msg_id=None,
+                        budget={
+                            "total": budget.get("total", 0),
+                            "fraction": budget.get("fraction", 0.0),
+                            "window": budget.get("window", 0),
+                        },
+                    )
+
                 messages = chunk.get("messages", [])
                 # 第一帧 values 含 checkpoint 恢复的旧 messages，预填 seen_ids 跳过，防重复输出
                 if first_values_frame:
@@ -213,11 +262,17 @@ class PoirotStreamClient:
                         tool_calls = getattr(msg, "tool_calls", None) or []
                         for tc in tool_calls:
                             if isinstance(tc, dict):
+                                tc_name = tc.get("name", "")
+                                tc_id = tc.get("id", "")
+                                if not tc_name or (tc_id and tc_id in seen_tool_call_ids):
+                                    continue
+                                if tc_id:
+                                    seen_tool_call_ids.add(tc_id)
                                 yield StreamEvent(
                                     type="tool_start", content="",
-                                    tool_name=tc.get("name", ""),
+                                    tool_name=tc_name,
                                     tool_args=tc.get("args") if isinstance(tc.get("args"), dict) else None,
-                                    tool_result=None, msg_id=tc.get("id", ""),
+                                    tool_result=None, msg_id=tc_id,
                                 )
                     elif isinstance(msg, ToolMessage):
                         result_text = _extract_text(msg.content)

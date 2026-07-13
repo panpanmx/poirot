@@ -123,3 +123,30 @@ def test_switch_expert_mode_returns_new_instance(tmp_path, monkeypatch) -> None:
     new_runtime = runtime.switch_expert_mode(expert_mode=True)
 
     assert new_runtime is not runtime  # 新实例
+
+
+def test_switch_expert_mode_passes_context_governance(tmp_path, monkeypatch) -> None:
+    """switch_expert_mode 必须把 context_governance 透传给 make_lead_agent——
+
+    之前没传，_build_middlewares 看到 None 跳过整个治理层，StrategyMiddleware 不挂，
+    切换 expert 后 budget/fraction/压缩全部失效（D12 同款故障）。
+    """
+    runtime = _fake_runtime(tmp_path)
+
+    captured = {}
+
+    def fake_make_lead_agent(expert_mode=False, capability_registry=None, **kw):
+        captured["context_governance"] = kw.get("context_governance")
+        return SimpleNamespace()
+
+    monkeypatch.setattr(
+        "poirot.backend.app.bootstrap.make_lead_agent", fake_make_lead_agent
+    )
+
+    runtime.switch_expert_mode(expert_mode=True)
+
+    cg = captured.get("context_governance")
+    assert cg is not None, "context_governance 必须透传给 make_lead_agent"
+    # 切换后的 externalize_dir 应已被 _resolve_relative_paths 锚到项目根（绝对路径）
+    ext_dir = cg.params.get("externalize_dir", "")
+    assert Path(ext_dir).is_absolute(), f"切换后 externalize_dir 应为绝对路径，实际 {ext_dir}"

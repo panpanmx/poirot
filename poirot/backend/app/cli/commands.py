@@ -1,134 +1,112 @@
-"""commands — CLI 命令系统（/help /clear /mode /exit /expand /thinking /tools /model /thread）。
+"""commands — CLI 命令系统（/help /clear /expert /default /report /exit /expand /thinking /tools /model /thread /prompt）。
 
-命令以 / 开头，handle_command 分发。返回 True 表示退出 CLI，False 继续循环。
+命令以 / 开头，``handle_command`` 从 ``CommandRegistry`` 查 handler 分发。
+返回 True 表示退出 CLI，False 继续循环。
+
+``_cmd_help`` 文案与 ``/`` 补全菜单的 ``display_meta`` 共用同一份 ``CommandSpec.description``，
+避免两处维护。``CommandRegistry.register_skill()`` 预留接口见 ``registry.py``。
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from rich.console import Console
 
+from poirot.backend.app.cli.registry import CommandRegistry, CommandSpec
 from poirot.backend.app.cli.stream_handler import StreamRenderer
 
 
-def handle_command(
-    cmd: str,
-    console: Console,
-    renderer: StreamRenderer,
-    state: dict[str, Any],
-    runtime: Any,
-) -> bool:
-    """处理 / 命令。返回 True=退出 CLI，False=继续。"""
-    parts = cmd.strip().split(maxsplit=1)
-    name = parts[0].lower()
-    arg = parts[1].strip() if len(parts) > 1 else ""
+@dataclass
+class CommandContext:
+    """单次命令调用的上下文——统一 ``_cmd_*`` 函数签名，让 ``handle_command`` 能通过 registry 泛化分发。"""
 
-    handlers = {
-        "/help": lambda: _cmd_help(console),
-        "/clear": lambda: _cmd_clear(console),
-        "/expert": lambda: _cmd_expert(console, state),
-        "/default": lambda: _cmd_default(console, state),
-        "/report": lambda: _cmd_report(arg, console, state),
-        "/exit": lambda: True,
-        "/quit": lambda: True,
-        "/expand": lambda: _cmd_expand(renderer),
-        "/thinking": lambda: _cmd_thinking(arg, console, renderer),
-        "/tools": lambda: _cmd_tools(console, runtime),
-        "/model": lambda: _cmd_model(console, runtime),
-        "/thread": lambda: _cmd_thread(console, runtime),
-        "/prompt": lambda: _cmd_prompt(arg, console),
-    }
-
-    handler = handlers.get(name)
-    if handler is None:
-        console.print(f"[yellow]Unknown command: {cmd}[/yellow]")
-        return False
-
-    result = handler()
-    return result if isinstance(result, bool) else False
+    console: Console
+    renderer: StreamRenderer
+    state: dict[str, Any]
+    runtime: Any
+    arg: str
 
 
-def _cmd_help(console: Console) -> None:
-    console.print("[bold]Available commands:[/bold]")
-    console.print("  [cyan]/help[/cyan]     Show this help")
-    console.print("  [cyan]/clear[/cyan]    Clear screen")
-    console.print("  [cyan]/expert[/cyan]    Switch to expert mode (deep research), applies next round")
-    console.print("  [cyan]/default[/cyan]   Switch to default mode (lightweight chat), applies next round")
-    console.print("  [cyan]/report[/cyan]    Generate report from current thread (default mode); optional topic")
-    console.print("  [cyan]/expand[/cyan]   Expand last round tool results")
-    console.print("  [cyan]/thinking[/cyan] Toggle thinking display (on|off)")
-    console.print("  [cyan]/tools[/cyan]    List available tools")
-    console.print("  [cyan]/model[/cyan]    Show current model routing chain")
-    console.print("  [cyan]/thread[/cyan]   Show thread info")
-    console.print("  [cyan]/prompt[/cyan]   Prompt management (list|show <cat/name>|reload)")
-    console.print("  [cyan]/exit[/cyan]     Exit (also /quit)")
+# ---- handler 函数（签名统一为 ctx → bool | None） ----
 
 
-def _cmd_clear(console: Console) -> None:
-    console.clear()
+def _cmd_help(ctx: CommandContext) -> None:
+    ctx.console.print("[bold]Available commands:[/bold]")
+    for spec in _registry.list_all():
+        ctx.console.print(f"  [cyan]{spec.name}[/cyan]     {spec.description}")
 
 
-def _cmd_expert(console: Console, state: dict[str, Any]) -> None:
-    state["pending_expert_mode"] = True
-    console.print("[green]Mode will switch to expert next round[/green]")
+def _cmd_clear(ctx: CommandContext) -> None:
+    ctx.console.clear()
 
 
-def _cmd_default(console: Console, state: dict[str, Any]) -> None:
-    state["pending_expert_mode"] = False
-    console.print("[green]Mode will switch to default next round[/green]")
+def _cmd_expert(ctx: CommandContext) -> None:
+    ctx.state["pending_expert_mode"] = True
+    ctx.console.print("[green]Mode will switch to expert next round[/green]")
 
 
-def _cmd_report(arg: str, console: Console, state: dict[str, Any]) -> None:
+def _cmd_default(ctx: CommandContext) -> None:
+    ctx.state["pending_expert_mode"] = False
+    ctx.console.print("[green]Mode will switch to default next round[/green]")
+
+
+def _cmd_report(ctx: CommandContext) -> None:
     """标记 pending_report，主循环检测后调 _trigger_report（避免 commands.py 依赖 main.py）。
 
     空字符串 "" 表"pending 无 topic"，None 表"未设 pending"——区分避免 sentinel 冲突。
     """
-    state["pending_report"] = arg.strip()
+    ctx.state["pending_report"] = ctx.arg.strip()
 
 
-def _cmd_expand(renderer: StreamRenderer) -> None:
-    renderer.expand_last_round()
+def _cmd_exit(ctx: CommandContext) -> bool:
+    return True
 
 
-def _cmd_thinking(arg: str, console: Console, renderer: StreamRenderer) -> None:
-    if arg == "off":
-        renderer.state["thinking_enabled"] = False
-        console.print("[green]Thinking display off[/green]")
-    elif arg == "on":
-        renderer.state["thinking_enabled"] = True
-        console.print("[green]Thinking display on[/green]")
+def _cmd_expand(ctx: CommandContext) -> None:
+    ctx.renderer.expand_last_round()
+
+
+def _cmd_thinking(ctx: CommandContext) -> None:
+    # 语义：toggle Thought 折叠行（非逐 token 流）——与 stream_handler._render_thinking 联动
+    if ctx.arg == "off":
+        ctx.renderer.state["thinking_enabled"] = False
+        ctx.console.print("[green]Thinking display off[/green]")
+    elif ctx.arg == "on":
+        ctx.renderer.state["thinking_enabled"] = True
+        ctx.console.print("[green]Thinking display on[/green]")
     else:
-        current = "on" if renderer.state["thinking_enabled"] else "off"
-        console.print(f"[yellow]Usage: /thinking on|off (current: {current})[/yellow]")
+        current = "on" if ctx.renderer.state["thinking_enabled"] else "off"
+        ctx.console.print(f"[yellow]Usage: /thinking on|off (current: {current})[/yellow]")
 
 
-def _cmd_tools(console: Console, runtime: Any) -> None:
+def _cmd_tools(ctx: CommandContext) -> None:
     try:
         from poirot.backend.agents.agent_tools.available import get_available_tools
         tools = get_available_tools(include_mcp=True)
-        console.print("[bold]Available tools:[/bold]")
+        ctx.console.print("[bold]Available tools:[/bold]")
         for t in tools:
-            console.print(f"  [cyan]{t.name}[/cyan]")
+            ctx.console.print(f"  [cyan]{t.name}[/cyan]")
     except Exception as exc:
-        console.print(f"[red]Failed to list tools: {exc}[/red]")
+        ctx.console.print(f"[red]Failed to list tools: {exc}[/red]")
 
 
-def _cmd_model(console: Console, runtime: Any) -> None:
+def _cmd_model(ctx: CommandContext) -> None:
     try:
         from poirot.backend.agents.leader.agent import _resolve_actual_model_name
-        name = _resolve_actual_model_name(runtime.capability_registry)
-        console.print(f"[bold]Model routing:[/bold] [cyan]{name}[/cyan]")
+        name = _resolve_actual_model_name(ctx.runtime.capability_registry)
+        ctx.console.print(f"[bold]Model routing:[/bold] [cyan]{name}[/cyan]")
     except Exception as exc:
-        console.print(f"[red]Failed to get model info: {exc}[/red]")
+        ctx.console.print(f"[red]Failed to get model info: {exc}[/red]")
 
 
-def _cmd_thread(console: Console, runtime: Any) -> None:
-    console.print(f"[bold]Thread ID:[/bold] [cyan]{runtime.thread_id}[/cyan]")
-    console.print(f"[bold]Thread dir:[/bold] [dim]{runtime.thread_dir}[/dim]")
+def _cmd_thread(ctx: CommandContext) -> None:
+    ctx.console.print(f"[bold]Thread ID:[/bold] [cyan]{ctx.runtime.thread_id}[/cyan]")
+    ctx.console.print(f"[bold]Thread dir:[/bold] [dim]{ctx.runtime.thread_dir}[/dim]")
     try:
         import json
-        events_path = runtime.thread_journal.events_path
+        events_path = ctx.runtime.thread_journal.events_path
         if events_path.exists():
             lines = events_path.read_text(encoding="utf-8").strip().split("\n\n")
             runs = []
@@ -141,49 +119,99 @@ def _cmd_thread(console: Console, runtime: Any) -> None:
                     except Exception:
                         pass
             if runs:
-                console.print("[bold]Recent runs:[/bold]")
+                ctx.console.print("[bold]Recent runs:[/bold]")
                 for rid in runs[-5:]:
-                    console.print(f"  [dim]{rid}[/dim]")
+                    ctx.console.print(f"  [dim]{rid}[/dim]")
     except Exception:
         pass
 
 
-def _cmd_prompt(arg: str, console: Console) -> None:
+def _cmd_prompt(ctx: CommandContext) -> None:
     """Prompt 管理命令：/prompt list | /prompt show <cat/name> | /prompt reload"""
     from poirot.backend.agents.prompts import get_prompt_manager
 
     pm = get_prompt_manager()
+    arg = ctx.arg
     if not arg or arg == "list":
         prompts = pm.list_prompts()
         if not prompts:
-            console.print("[dim]No prompts found[/dim]")
+            ctx.console.print("[dim]No prompts found[/dim]")
             return
-        console.print("[bold]Available prompts:[/bold]")
+        ctx.console.print("[bold]Available prompts:[/bold]")
         for p in prompts:
             text, source = pm.load_raw(p.split("/")[0], p.split("/")[1])
             tag = "[green](user)[/green]" if source == "user" else "[dim](system)[/dim]"
-            console.print(f"  [cyan]{p}[/cyan] {tag}")
+            ctx.console.print(f"  [cyan]{p}[/cyan] {tag}")
         return
 
     parts = arg.split(maxsplit=1)
     if parts[0] == "show" and len(parts) > 1:
         ref = parts[1].strip()
         if "/" not in ref:
-            console.print("[yellow]Usage: /prompt show <category/name>[/yellow]")
+            ctx.console.print("[yellow]Usage: /prompt show <category/name>[/yellow]")
             return
         cat, name = ref.split("/", 1)
         try:
             text, source = pm.load_raw(cat, name)
             tag = f"[green][{source}][/green]" if source == "user" else f"[dim][{source}][/dim]"
-            console.print(f"{tag} [cyan]{cat}/{name}[/cyan]:")
-            console.print(text)
+            ctx.console.print(f"{tag} [cyan]{cat}/{name}[/cyan]:")
+            ctx.console.print(text)
         except FileNotFoundError:
-            console.print(f"[red]Prompt not found: {ref}[/red]")
+            ctx.console.print(f"[red]Prompt not found: {ref}[/red]")
         return
 
     if parts[0] == "reload":
         pm.clear_cache()
-        console.print("[green]Prompt cache cleared — next load reads from .md files[/green]")
+        ctx.console.print("[green]Prompt cache cleared — next load reads from .md files[/green]")
         return
 
-    console.print("[yellow]Usage: /prompt list | /prompt show <cat/name> | /prompt reload[/yellow]")
+    ctx.console.print("[yellow]Usage: /prompt list | /prompt show <cat/name> | /prompt reload[/yellow]")
+
+
+# ---- 模块级 registry：注册全部 builtin 命令 ----
+
+_registry = CommandRegistry()
+_registry.register(CommandSpec("/help", "Show this help", _cmd_help))
+_registry.register(CommandSpec("/clear", "Clear screen", _cmd_clear))
+_registry.register(CommandSpec("/expert", "Switch to expert mode (deep research), applies next round", _cmd_expert))
+_registry.register(CommandSpec("/default", "Switch to default mode (lightweight chat), applies next round", _cmd_default))
+_registry.register(CommandSpec("/report", "Generate report from current thread; optional topic", _cmd_report))
+_registry.register(CommandSpec("/exit", "Exit (also /quit)", _cmd_exit))
+_registry.register(CommandSpec("/quit", "Exit (alias of /exit)", _cmd_exit))
+_registry.register(CommandSpec("/expand", "Expand last round tool results and Thought", _cmd_expand))
+_registry.register(CommandSpec("/thinking", "Toggle Thought fold row display (on|off)", _cmd_thinking))
+_registry.register(CommandSpec("/tools", "List available tools", _cmd_tools))
+_registry.register(CommandSpec("/model", "Show current model routing chain", _cmd_model))
+_registry.register(CommandSpec("/thread", "Show thread info", _cmd_thread))
+_registry.register(CommandSpec("/prompt", "Prompt management (list|show <cat/name>|reload)", _cmd_prompt))
+
+
+def get_registry() -> CommandRegistry:
+    """供 ``main.py`` 构造 ``SlashCommandCompleter`` 时获取注册表实例。"""
+    return _registry
+
+
+def handle_command(
+    cmd: str,
+    console: Console,
+    renderer: StreamRenderer,
+    state: dict[str, Any],
+    runtime: Any,
+) -> bool:
+    """处理 / 命令。返回 True=退出 CLI，False=继续。
+
+    从 ``CommandRegistry.get(name)`` 查 handler，构造 ``CommandContext`` 后调用。
+    未命中时打印 ``Unknown command`` 并返回 False。
+    """
+    parts = cmd.strip().split(maxsplit=1)
+    name = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    spec = _registry.get(name)
+    if spec is None:
+        console.print(f"[yellow]Unknown command: {cmd}[/yellow]")
+        return False
+
+    ctx = CommandContext(console=console, renderer=renderer, state=state, runtime=runtime, arg=arg)
+    result = spec.handler(ctx)
+    return result if isinstance(result, bool) else False

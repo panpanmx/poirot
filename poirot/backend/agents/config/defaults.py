@@ -40,6 +40,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "context_governance": {
         "strategy": "default",
+        # window 不在此硬编码——由 DefaultStrategy.after_model 每轮调用
+        # resolve_window_size(model) 动态解析当前活跃 provider 的真实窗口
+        # （FallbackChatModel 穿透到内层 ChatDeepSeek/ChatOpenAI 的 model_name，
+        # 命中 _MODEL_WINDOW_MAP：deepseek-v4-flash→200k / deepseek-chat→64k / …）。
+        # 治理占比 fraction 以此真实窗口为分母，P5 熔断阈值才准确。
         "params": {},
     },
 }
@@ -56,5 +61,7 @@ EXPERT_PROFILE: dict[str, Any] = {
     "tools": {"tool_search_default": True},
     "middleware": {"enabled": ("todo", "summarization"), "todo": True, "summarization": True},
     "reporting": {"save_artifact": True},
-    "context_governance": {"strategy": "minimal"},
+    # 不覆盖 strategy——沿用 DEFAULT_CONFIG 的 "default"（唯一已注册的策略 bundle）。
+    # 曾误写 "minimal"（未注册），导致 build_governance_middlewares 静默跳过
+    # StrategyMiddleware：budget/fraction 永久停在 0、Compact 进度条不再更新（见 D12）。
 }

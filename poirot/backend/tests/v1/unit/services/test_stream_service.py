@@ -55,3 +55,26 @@ def test_custom_compaction_end_with_saved() -> None:
     assert len(ends) == 1
     assert ends[0]["content"] == "summarize"
     assert ends[0]["tool_result"] == "1800"
+
+
+def test_budget_update_init_zero_frame_filtered() -> None:
+    """init_budget 的全零快照（window=0）必须被过滤，避免 TUI 占用率闪烁到 0.0%。
+
+    DefaultStrategy.before_agent → init_budget 会把 budget 重置成
+    {total:0, fraction:0.0, window:0}，下一帧 values chunk 把这个零状态带出来。
+    track() 跑过后 window 恒 > 0，所以用 window > 0 作为 init 帧的判定阈值。
+    """
+    init_frame = ("values", {"governance": {"default": {"budget": {
+        "input": 0, "output": 0, "total": 0, "window": 0, "fraction": 0.0,
+    }}}})
+    real_frame = ("values", {"governance": {"default": {"budget": {
+        "input": 100, "output": 50, "total": 150, "window": 128000, "fraction": 0.00117,
+    }}}})
+    graph = _FakeGraph([init_frame, real_frame])
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    budgets = [e for e in events if e["type"] == "budget_update"]
+    # init 帧被过滤，只剩 real 帧一条
+    assert len(budgets) == 1
+    assert budgets[0]["budget"]["total"] == 150
+    assert budgets[0]["budget"]["window"] == 128000

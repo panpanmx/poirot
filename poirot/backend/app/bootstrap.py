@@ -28,6 +28,27 @@ _PROJECT_ROOT = Path(__file__).parents[3]
 _CST = timezone(timedelta(hours=8))
 
 
+def _resolve_relative_paths(config: AppConfig) -> AppConfig:
+    """把 config 里相对路径锚到 _PROJECT_ROOT——与 logs_root 同款处理。
+
+    目前覆盖 ``context_governance.params.externalize_dir``（默认 ``.poirot/externalized``）。
+    之前没锚定，ExternalizerExecutor 直接 ``os.makedirs(self._dir)`` 按进程 CWD 解析——
+    用户从 PowerShell 启动 ``poirot``（默认 CWD=用户家目录）时，外化文件全部写到了
+    ``C:\\Users\\<user>\\.poirot\\externalized\\``，与项目目录下的 ``.poirot/externalized``
+    分家，用户在项目目录看不到任何外化记录（D12 现场定位）。
+    """
+    params = dict(config.context_governance.params)
+    ext_dir = params.get("externalize_dir", ".poirot/externalized")
+    p = Path(ext_dir)
+    if not p.is_absolute():
+        p = (_PROJECT_ROOT / p).resolve()
+    params["externalize_dir"] = str(p)
+    return replace(
+        config,
+        context_governance=replace(config.context_governance, params=params),
+    )
+
+
 def _make_thread_id() -> str:
     ts = datetime.now(_CST).strftime("%Y%m%dT%H%M%S")
     suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=4))
@@ -104,9 +125,15 @@ class AppRuntime:
             new_config,
             runtime=replace(new_config.runtime, logs_root=str(logs_root)),
         )
+        # 锚定 externalize_dir 等治理层相对路径到项目根（同 logs_root 处理）
+        new_config = _resolve_relative_paths(new_config)
+        # 必须传 context_governance——否则 _build_middlewares 看到 None 会跳过整个
+        # 治理层（StrategyMiddleware 不挂），切换 expert 后 budget/fraction/压缩全部失效，
+        # 与 D12 "minimal 未注册" 故障现象相同。
         new_leader = make_lead_agent(
             expert_mode=expert_mode,
             capability_registry=self.capability_registry,
+            context_governance=new_config.context_governance,
         )
         self.thread_journal.append("mode.switched", {
             "expert_mode": expert_mode,
@@ -138,6 +165,8 @@ def bootstrap_runtime(
         config,
         runtime=replace(config.runtime, logs_root=str(logs_root)),
     )
+    # 锚定 externalize_dir 等治理层相对路径到项目根（同 logs_root 处理）
+    config = _resolve_relative_paths(config)
 
     # Thread-level setup — journal created BEFORE MCP/LLM loading.
     thread_id = _make_thread_id()

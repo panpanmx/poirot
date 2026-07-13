@@ -147,7 +147,30 @@ def token_counter(messages: list, model_name: str | None = None) -> int:
 
 
 def resolve_window_size(model: Any) -> int:
-    """取模型上下文窗口大小。model 属性优先 → _identifying_params → model_name 映射表前缀匹配 → default 128000。"""
+    """取模型上下文窗口大小。
+
+    解析顺序：
+    1. FallbackChatModel 穿透——读 ``.models[active]`` 内层真实模型（ChatDeepSeek
+       等），递归解析其 model_name → 命中映射表（deepseek-v4-flash→200k 等）。
+       FallbackChatModel 本身的 _identifying_params 只含 providers/active，不含
+       窗口信息，必须穿透到内层才能拿到真实容量。
+    2. model 属性（max_input_tokens / model_max_tokens / max_tokens）
+    3. _identifying_params dict
+    4. model_name / model 前缀匹配 _MODEL_WINDOW_MAP
+    5. default 128000
+    """
+    # FallbackChatModel 穿透：取活跃内层模型递归解析
+    inner_models = getattr(model, "models", None)
+    if isinstance(inner_models, list) and inner_models:
+        active = getattr(model, "_active", 0) or 0
+        inner = inner_models[active] if active < len(inner_models) else inner_models[0]
+        # bind_tools 后的 RunnableBinding 需剥 .bound 拿到原始 BaseChatModel
+        bound = getattr(inner, "bound", None)
+        if bound is not None:
+            inner = bound
+        w = resolve_window_size(inner)
+        if w != _DEFAULT_WINDOW:
+            return w
     for attr in ("max_input_tokens", "model_max_tokens", "max_tokens"):
         value = getattr(model, attr, None)
         if isinstance(value, int) and value > 0:
@@ -169,3 +192,37 @@ def resolve_window_size(model: Any) -> int:
             if model_name.startswith(prefix):
                 return window
     return _DEFAULT_WINDOW
+
+
+def resolve_model_name(model: Any) -> str | None:
+    """取当前活跃 provider 的真实模型名（如 ``deepseek-v4-flash``）。
+
+    与 ``resolve_window_size`` 同一穿透逻辑：FallbackChatModel 本身没有模型名，
+    只有 ``.models[active]`` 内层真实 ChatModel 才有 ``model_name``/``model``
+    属性——TUI 的 Build 信息行要展示的是这个真实名字，不是 provider 链
+    （如 ``openai,qwen,deepseek``）。
+    """
+    inner_models = getattr(model, "models", None)
+    if isinstance(inner_models, list) and inner_models:
+        active = getattr(model, "_active", 0) or 0
+        inner = inner_models[active] if active < len(inner_models) else inner_models[0]
+        bound = getattr(inner, "bound", None)
+        if bound is not None:
+            inner = bound
+        name = resolve_model_name(inner)
+        if name:
+            return name
+    name = getattr(model, "model_name", None) or getattr(model, "model", None)
+    if isinstance(name, str) and name:
+        return name
+    params = getattr(model, "_identifying_params", None)
+    if callable(params):
+        try:
+            params = params()
+        except Exception:
+            params = None
+    if isinstance(params, dict):
+        v = params.get("model_name") or params.get("model")
+        if isinstance(v, str) and v:
+            return v
+    return None

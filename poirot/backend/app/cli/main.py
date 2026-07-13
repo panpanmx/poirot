@@ -11,11 +11,15 @@ load_dotenv()
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.shortcuts import CompleteStyle
+from prompt_toolkit.styles import Style
 from rich.console import Console
 
 from poirot.backend.app.bootstrap import bootstrap_runtime, AppRuntime
 from poirot.backend.app.cli.banner import render_banner
-from poirot.backend.app.cli.commands import handle_command
+from poirot.backend.app.cli.command_completer import SlashCommandCompleter
+from poirot.backend.app.cli.commands import get_registry, handle_command
+from poirot.backend.app.cli.status_bar import build_bottom_toolbar
 from poirot.backend.app.cli.stream_handler import StreamRenderer
 from poirot.backend.app.services.stream_service import PoirotStreamClient
 from poirot.backend.agents.intent import default_intent_tree
@@ -38,12 +42,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_parser.add_argument("--logs-root", default=None)
     run_parser.add_argument("--no-artifact", action="store_true")
 
-    subparsers.add_parser("chat")
+    subparsers.add_parser("cli", help="traditional scrolling CLI (prompt_toolkit + rich)")
 
     args = parser.parse_args(argv)
 
-    if args.command is None or args.command == "chat":
-        return run_chat(provider=args.provider, model=args.model)
+    if args.command is None:
+        return run_chat(provider=args.provider, model=args.model, legacy=False)
+
+    if args.command == "cli":
+        return run_chat(provider=args.provider, model=args.model, legacy=True)
 
     if args.command == "run":
         overrides: dict = {}
@@ -72,13 +79,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 1
 
 
-def run_chat(provider: str | None = None, model: str | None = None) -> int:
+def run_chat(provider: str | None = None, model: str | None = None, legacy: bool = False) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, OSError):
         pass
     # bootstrap 在 asyncio.run 之前（同步阶段），避免 MCP 的 asyncio.run 嵌套
     runtime = bootstrap_runtime(provider=provider, model=model)
+
+    if not legacy:
+        # 默认走 TUI 全屏应用（textual）
+        from poirot.backend.app.tui import PoirotTUI
+        app = PoirotTUI(runtime=runtime, provider=provider, model=model)
+        app.run()
+        return 0
+
     return asyncio.run(_run_chat_async(runtime, provider, model))
 
 
@@ -101,9 +116,28 @@ def _build_stream_config(runtime: AppRuntime, run_context: Any) -> dict:
 
 async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str | None) -> int:
     console = Console()
-    session: PromptSession = PromptSession()
-    renderer = StreamRenderer(console=console)
-    cli_state: dict[str, Any] = {"pending_expert_mode": None}
+    # cli_state：主循环共享状态——mode/model 供 bottom_toolbar 显示，current_tokens/fraction/window
+    # 由 renderer 收到 budget_update 事件时回填（见 stream_handler._update_budget）
+    cli_state: dict[str, Any] = {
+        "pending_expert_mode": None,
+        "mode": "expert" if runtime.config.runtime.expert_mode else "default",
+        "model": _resolve_actual_model_name(runtime.capability_registry),
+        "current_tokens": 0,
+        "current_fraction": 0.0,
+        "current_window": 0,
+    }
+    session: PromptSession = PromptSession(
+        completer=SlashCommandCompleter(get_registry()),
+        complete_while_typing=True,
+        complete_style=CompleteStyle.COLUMN,
+        bottom_toolbar=lambda: build_bottom_toolbar(cli_state),
+        style=Style([
+            ("completion-menu.completion.current", "bg:#6A5ACD fg:#ffffff"),
+            ("completion-menu.completion", "bg:#2b2b2b fg:#aaaaaa"),
+            ("bottom-toolbar", "bg:#2b2b2b fg:#aaaaaa"),
+        ]),
+    )
+    renderer = StreamRenderer(console=console, cli_state=cli_state)
 
     def _print_status() -> None:
         mode_label = "expert" if runtime.config.runtime.expert_mode else "default"
@@ -157,6 +191,16 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
 
     provider_label = provider or "default"
     console.print(render_banner("POIROT"))
+    # MCP 工具数量徽标——bootstrap 后统计已加载的 MCP 工具
+    try:
+        from poirot.backend.agents.agent_tools.available import get_available_tools
+        from poirot.backend.agents.agent_tools.mcp_metadata import is_mcp_tool
+        tools = get_available_tools(include_mcp=True)
+        mcp_count = sum(1 for t in tools if is_mcp_tool(t))
+        console.print(f"[green]●[/green] {mcp_count} MCP tools loaded\n")
+    except Exception:
+        # 工具加载失败不阻塞 CLI 启动
+        pass
     _print_welcome()
     console.print()
 
@@ -185,6 +229,9 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
             if pending is not None:
                 runtime = runtime.switch_expert_mode(expert_mode=pending)
                 cli_state["pending_expert_mode"] = None
+                # 同步 bottom_toolbar 显示的 mode/model
+                cli_state["mode"] = "expert" if pending else "default"
+                cli_state["model"] = _resolve_actual_model_name(runtime.capability_registry)
                 _print_status()
                 label = "expert" if pending else "default"
                 console.print(f"[green]Switched to {label} mode[/green]\n")
@@ -195,6 +242,9 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
                 cli_state["pending_report"] = None
                 _trigger_report(pending_report, runtime, console)
             continue
+
+        # 用户输入卡片化回显（/命令不套卡片——它们是系统操作，不是对话）
+        renderer.render_user_input(prompt)
 
         # 意图识别（graph 之前）：命中则不进 graph
         if intent_tree.detect_and_dispatch(prompt, runtime):
@@ -212,6 +262,11 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
             runtime.run_manager.mark_running(ctx.run_id)
             config = _build_stream_config(runtime, ctx)
             client = PoirotStreamClient(graph=runtime.leader_agent.graph, config=config)
+
+            # 注入 round 起始时间 + 模型名，供 _render_done 输出耗时尾行
+            import time as _time
+            renderer.state["round_t0"] = _time.monotonic()
+            renderer.state["model"] = _resolve_actual_model_name(runtime.capability_registry)
 
             async for event in client.stream(prompt):
                 renderer.render(event)
