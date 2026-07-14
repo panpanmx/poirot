@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from poirot.backend.agents.sandbox.integration.config import SandboxConfig
+
 
 @dataclass(frozen=True)
 class RuntimeConfig:
@@ -67,3 +69,4 @@ class AppConfig:
     reporting: ReportingConfig
     observability: ObservabilityConfig
     context_governance: ContextGovernanceConfig = field(default_factory=ContextGovernanceConfig)
+    sandbox: SandboxConfig = field(default_factory=SandboxConfig)

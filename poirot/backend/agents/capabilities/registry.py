@@ -14,6 +14,7 @@ class CapabilityRegistry:
     tools: dict[str, Any] = field(default_factory=dict)
     reporter: Any | None = None
     artifact_store: Any | None = None
+    sandbox_provider: Any | None = None
 
     def get_model(self, name: str) -> Any:
         try:
@@ -36,3 +37,8 @@ class CapabilityRegistry:
         if self.artifact_store is None:
             raise CapabilityMissingError("artifact_store not registered")
         return self.artifact_store
+
+    def get_sandbox_provider(self) -> Any:
+        if self.sandbox_provider is None:
+            raise CapabilityMissingError("sandbox_provider not registered")
+        return self.sandbox_provider

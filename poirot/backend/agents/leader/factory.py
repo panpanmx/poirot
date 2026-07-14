@@ -33,6 +33,7 @@ def _build_middlewares(
     model: BaseChatModel | None = None,
     context_governance: Any = None,
     summarize_model: Any = None,
+    sandbox_provider: Any = None,
 ) -> list:
     """全模式全挂 middleware，参数化控制行为差异。
 
@@ -43,7 +44,7 @@ def _build_middlewares(
 
     治理层（context_governance）挂载顺序见 builder.build_governance_middlewares。
     挂载顺序：治理层（公共3 + StrategyMiddleware） → SystemContext → Title → RunJournal →
-    LoopDetection → ToolCall → Evidence → Todo → Reflection → Report。
+    Sandbox（条件挂）→ LoopDetection → ToolCall → Evidence → Todo → Reflection → Report。
     """
     middlewares: list = []
     if context_governance is not None:
@@ -56,6 +57,14 @@ def _build_middlewares(
         SystemContextMiddleware(),
         TitleMiddleware(),
         RunJournalMiddleware(),
+    ])
+    if sandbox_provider is not None:
+        from poirot.backend.agents.sandbox.integration.middleware import (
+            SandboxMiddleware,
+        )
+
+        middlewares.append(SandboxMiddleware(provider=sandbox_provider))
+    middlewares.extend([
         LoopDetectionMiddleware(),
         ToolCallMiddleware(),
         EvidenceMiddleware(),
@@ -76,6 +85,7 @@ def make_lead_agent(
     middleware_manager: Any = None,
     runnable_config: RunnableConfig | None = None,
     context_governance: Any = None,
+    sandbox_provider: Any = None,
 ) -> Any:
     """App-layer factory: expert_flag 参数化装配 graph。
 
@@ -128,7 +138,7 @@ def make_lead_agent(
         graph=create_agent(
             model=model,
             tools=tools or None,
-            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model),
+            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider),
             system_prompt=apply_prompt_template(expert_mode=resolved_expert),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),

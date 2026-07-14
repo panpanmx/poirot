@@ -14,6 +14,7 @@ from poirot.backend.agents.state.reducers import (
     merge_metadata,
     merge_observations,
     merge_reflection_items,
+    merge_sandbox,
     merge_sources,
     merge_tagged_context,
     merge_todos,
@@ -140,3 +141,4 @@ class ThreadState(AgentState):
     todos: Annotated[list | None, merge_todos]
     governance: Annotated[GovernanceState | None, merge_governance]
     tagged_context: Annotated[dict | None, merge_tagged_context]
+    sandbox: Annotated[dict | None, merge_sandbox]

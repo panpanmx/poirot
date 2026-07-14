@@ -134,6 +134,7 @@ class AppRuntime:
             expert_mode=expert_mode,
             capability_registry=self.capability_registry,
             context_governance=new_config.context_governance,
+            sandbox_provider=getattr(self.capability_registry, "sandbox_provider", None),
         )
         self.thread_journal.append("mode.switched", {
             "expert_mode": expert_mode,
@@ -149,6 +150,35 @@ class AppRuntime:
             thread_journal=self.thread_journal,
             leader_agent=new_leader,
         )
+
+
+def _load_sandbox_provider(config: AppConfig) -> Any:
+    """反射加载 sandbox provider。config.sandbox.use 为空则返 None（Grill #9）。"""
+    sandbox_config = config.sandbox
+    if not sandbox_config.use:
+        return None
+    import importlib
+
+    module_path, _, class_name = sandbox_config.use.partition(":")
+    module = importlib.import_module(module_path)
+    provider_cls = getattr(module, class_name)
+    path_mappings = _build_path_mappings(sandbox_config)
+    return provider_cls(path_mappings=path_mappings, sandbox_config=sandbox_config)
+
+
+def _build_path_mappings(sandbox_config: Any) -> list:
+    """从 config 构造 PathMapping 列表。路径锚定 .poirot/sandbox/local/（类型分层）。"""
+    from poirot.backend.agents.sandbox.types import PathMapping
+
+    sandbox_root = _PROJECT_ROOT / ".poirot" / "sandbox" / "local"
+    mappings = [
+        PathMapping("/mnt/poirot/user-data/workspace", str(sandbox_root / "workspace")),
+        PathMapping("/mnt/poirot/user-data/uploads", str(sandbox_root / "uploads")),
+        PathMapping("/mnt/poirot/user-data/outputs", str(sandbox_root / "outputs")),
+    ]
+    for mount in sandbox_config.mounts:
+        mappings.append(PathMapping(mount.container_path, mount.host_path, mount.read_only))
+    return mappings
 
 
 def bootstrap_runtime(
@@ -229,16 +259,31 @@ def bootstrap_runtime(
         )
 
     # Registry + LeaderAgent — built ONCE per thread, reused across runs.
+    # Sandbox 装配（Grill #9：config 配了 provider 就加载，不论模式）
+    sandbox_provider = _load_sandbox_provider(config)
+    sandbox_tools = []
+    if sandbox_provider is not None:
+        from poirot.backend.agents.sandbox.integration.tools import make_sandbox_tools
+        from poirot.backend.agents.sandbox.integration.bootstrap_sandbox import (
+            register_sandbox_shutdown,
+        )
+
+        sandbox_tools = make_sandbox_tools(sandbox_provider)
+        register_sandbox_shutdown(sandbox_provider)
+
+    all_tools = {**tools, **{t.name: t for t in sandbox_tools}}
     registry = CapabilityRegistry(
         models={"researcher": researcher_model, "reporter": reporter_model},
-        tools=tools,
+        tools=all_tools,
         reporter=MarkdownReporter(),
         artifact_store=LocalArtifactStore(),
+        sandbox_provider=sandbox_provider,
     )
     leader_agent = make_lead_agent(
         expert_mode=expert_mode,
         capability_registry=registry,
         context_governance=config.context_governance,
+        sandbox_provider=sandbox_provider,
     )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,

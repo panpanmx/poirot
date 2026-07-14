@@ -30,6 +30,9 @@ include = ["poirot*"]
 dev = [
     "pytest>=7.4.4",
 ]
+docker = [
+    "agent-sandbox>=0.0.19",
+]
 
 [dependency-groups]
 dev = [

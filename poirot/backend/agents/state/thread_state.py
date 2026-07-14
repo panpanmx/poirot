@@ -15,4 +15,5 @@ def create_initial_thread_state(user_input: str) -> ThreadState:
         "errors": [],
         "metadata": {},
         "governance": None,
+        "sandbox": None,
     }

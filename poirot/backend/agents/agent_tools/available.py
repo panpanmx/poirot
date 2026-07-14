@@ -13,11 +13,16 @@ logger = logging.getLogger(__name__)
 # core: 基础工具，default + expert 都加载（省上下文）
 # deferred: 深度工具，仅 expert 加载
 CORE_TOOL_NAMES: set[str] = {"web_search", "browse_page", "read_snapshot"}
+SANDBOX_TOOL_NAMES: set[str] = {"bash", "read_file", "write_file", "list_dir", "str_replace"}
 
 
 def _tool_group(name: str) -> str:
-    """工具名 → group。core 白名单内归 core，其余归 deferred。"""
-    return "core" if name in CORE_TOOL_NAMES else "deferred"
+    """工具名 → group。core 白名单内归 core，sandbox 白名单内归 sandbox，其余归 deferred。"""
+    if name in CORE_TOOL_NAMES:
+        return "core"
+    if name in SANDBOX_TOOL_NAMES:
+        return "sandbox"
+    return "deferred"
 
 
 def dedupe_by_name(tools: list[BaseTool]) -> list[BaseTool]:

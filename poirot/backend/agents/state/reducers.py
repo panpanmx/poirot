@@ -213,3 +213,38 @@ def merge_tagged_context(current: dict | None, incoming: dict | None) -> dict | 
     if incoming is None:
         return current
     return incoming
+
+
+def merge_sandbox(
+    existing: dict | None, new: dict | None
+) -> dict | None:
+    """Reducer for ThreadState.sandbox — 幂等合并 + fail-closed + 不清空。
+
+    设计决策（Grill #3 确认）:
+    - sandbox_id 是 thread 级持久状态，跨轮保留加速复用（Layer 1 cache 秒级命中）
+    - 不需主动清空：容器死时（destroy/idle 超时）隐式重建，同 thread 算出同 ID，state 值不变
+    - fail-closed：不同 id 是 bug 不是 race（确定性 ID 排除合法 race），应暴露而非静默
+    - 失败传播：reducer 抛 ValueError 保持，graph 外层（LeaderAgent.run / stream_service）捕获转优雅提示
+
+    INVARIANT:
+    - 幂等合并：同 sandbox_id 合并 OK（多个工具同轮懒加载，确定性 ID 相同）
+    - fail-closed：不同 id 抛 ValueError（生命周期 bug，不静默选一个）
+    - 不清空：new=None 返 existing（保留持久状态）；无主动清空语义
+
+    触发场景（全是 bug）:
+    - provider 返回 id 与确定性公式不一致
+    - user_id 解析不一致（多用户 fallback bug）
+    - middleware wrap_tool_call diff 逻辑 bug 写入错误 id
+    - subagent 继承父 sandbox 失败（未来风险）
+    """
+    if new is None:
+        return existing
+    if existing is None:
+        return new
+    existing_id = existing.get("sandbox_id")
+    new_id = new.get("sandbox_id")
+    if existing_id == new_id:
+        return existing
+    raise ValueError(
+        f"Conflicting sandbox state updates: {existing_id!r} != {new_id!r}"
+    )
