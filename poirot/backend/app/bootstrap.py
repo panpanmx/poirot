@@ -83,6 +83,8 @@ class AppRuntime:
     thread_dir: Path
     thread_journal: RunJournal
     leader_agent: LeaderAgent
+    mcp_manager: Any = None
+    artifact_server: Any = None
 
     def run_question(
         self,
@@ -135,6 +137,8 @@ class AppRuntime:
             capability_registry=self.capability_registry,
             context_governance=new_config.context_governance,
             sandbox_provider=getattr(self.capability_registry, "sandbox_provider", None),
+            artifact_server=self.artifact_server,
+            mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
         )
         self.thread_journal.append("mode.switched", {
             "expert_mode": expert_mode,
@@ -149,6 +153,38 @@ class AppRuntime:
             thread_dir=self.thread_dir,
             thread_journal=self.thread_journal,
             leader_agent=new_leader,
+            mcp_manager=self.mcp_manager,
+            artifact_server=self.artifact_server,
+        )
+
+    def reload_mcp_tools(self) -> AppRuntime:
+        """MCP 工具变更后重建 LeaderAgent graph。
+
+        复用 switch_expert_mode 模式：重建 leader_agent（新工具注入），保留 thread_id /
+        thread_dir / thread_journal / capability_registry，checkpointer state 跨重建连续。
+        同步完成（<1s），下轮可用（当前轮用旧 graph 跑完）。
+        """
+        expert_mode = self.config.runtime.expert_mode if hasattr(self.config.runtime, "expert_mode") else False
+        new_leader = make_lead_agent(
+            expert_mode=expert_mode,
+            capability_registry=self.capability_registry,
+            context_governance=self.config.context_governance,
+            sandbox_provider=getattr(self.capability_registry, "sandbox_provider", None),
+            artifact_server=self.artifact_server,
+            mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
+        )
+        self.thread_journal.append("mcp.tools_reloaded", {"thread_id": self.thread_id})
+        return AppRuntime(
+            config=self.config,
+            capability_registry=self.capability_registry,
+            run_manager=self.run_manager,
+            researcher_model_name=self.researcher_model_name,
+            thread_id=self.thread_id,
+            thread_dir=self.thread_dir,
+            thread_journal=self.thread_journal,
+            leader_agent=new_leader,
+            mcp_manager=self.mcp_manager,
+            artifact_server=self.artifact_server,
         )
 
 
@@ -333,4 +369,6 @@ def bootstrap_runtime(
         thread_dir=thread_dir,
         thread_journal=thread_journal,
         leader_agent=leader_agent,
+        mcp_manager=mcp_manager,
+        artifact_server=artifact_server,
     )

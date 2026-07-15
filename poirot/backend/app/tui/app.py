@@ -25,6 +25,7 @@ from poirot.backend.app.services.stream_service import PoirotStreamClient
 from poirot.backend.app.tui import theme
 from poirot.backend.app.tui.command_palette import CommandPalette
 from poirot.backend.app.tui.conversation import ConversationLog
+from poirot.backend.app.tui.mcp_panel import McpPanel
 from poirot.backend.app.tui.side_panel import SidePanel
 from poirot.backend.app.tui.status_bar import StatusBar
 
@@ -206,6 +207,7 @@ class PoirotTUI(App):
         Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("ctrl+l", "clear_screen", "Clear", show=False),
         Binding("ctrl+p", "toggle_command_palette", "Commands", show=False),
+        Binding("ctrl+m", "toggle_mcp_panel", "MCP", show=True),
     ]
 
     def __init__(self, runtime: Any, provider: str | None = None, model: str | None = None) -> None:
@@ -226,6 +228,7 @@ class PoirotTUI(App):
             "mcp_count": 0,
             "msg_count": 0,
             "sandbox_id": "",
+            "mcp_servers": [],
             "_running": False,
         }
         self.registry = get_registry()
@@ -349,6 +352,8 @@ class PoirotTUI(App):
     def _load_mcp_count(self) -> None:
         count = self._resolve_mcp_count()
         self.cli_state["mcp_count"] = count
+        mcp_mgr = getattr(self.runtime, "mcp_manager", None) if self.runtime else None
+        self.cli_state["mcp_servers"] = mcp_mgr.list_servers() if mcp_mgr else []
         self.call_from_thread(self._apply_mcp_count, count)
 
     def _apply_mcp_count(self, count: int) -> None:
@@ -367,6 +372,14 @@ class PoirotTUI(App):
             self.pop_screen()
         else:
             self.push_screen(CommandPalette())
+
+    def action_toggle_mcp_panel(self) -> None:
+        """Ctrl+M 弹出/收起 MCP 管理面板（运行时加载 MCP server）。"""
+        if isinstance(self.screen, (CommandPalette, McpPanel)):
+            self.pop_screen()
+        else:
+            mcp_manager = getattr(self.runtime, "mcp_manager", None) if self.runtime else None
+            self.push_screen(McpPanel(mcp_manager, self.runtime))
 
     def _focus_conv_input(self) -> None:
         """聚焦对话输入框（切换布局/完成一轮后调用，确保可继续输入）。"""

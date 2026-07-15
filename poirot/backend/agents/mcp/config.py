@@ -22,6 +22,13 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CONFIG_PATH = ".poirot/mcp_servers.yaml"
 _ENV_PATTERN = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 
+_CREDENTIAL_VALUE_PATTERNS = [
+    re.compile(r"^ghp_[A-Za-z0-9]{36}$"),
+    re.compile(r"^sk-[A-Za-z0-9]{20,}$"),
+    re.compile(r"^Bearer\s+[A-Za-z0-9._\-]+$"),
+    re.compile(r"^token=[A-Za-z0-9]+$"),
+]
+
 
 @dataclass
 class McpServerConfig:
@@ -141,3 +148,77 @@ def load_mcp_config(config_path: str | None = None) -> McpConfig:
         core_tools=core_tools,
         tool_metadata=tool_metadata,
     )
+
+
+def _is_credential_value(value: str) -> bool:
+    """检测值是否匹配凭证模式。"""
+    if not isinstance(value, str) or not value:
+        return False
+    return any(p.match(value) for p in _CREDENTIAL_VALUE_PATTERNS)
+
+
+def _to_env_placeholder(key: str) -> str:
+    """key → ${KEY_UPPERCASE} 占位符。"""
+    return f"${{{key.upper()}}}"
+
+
+def _sanitize_server_dict(server: McpServerConfig) -> dict:
+    """McpServerConfig → dict，敏感值转 ${VAR} 占位符。"""
+    raw: dict = {
+        "transport": server.transport,
+        "enabled": server.enabled,
+        "timeout": server.timeout,
+        "connect_timeout": server.connect_timeout,
+    }
+    if server.transport == "stdio":
+        raw["command"] = server.command or ""
+        raw["args"] = list(server.args)
+        if server.env:
+            raw["env"] = {
+                k: (_to_env_placeholder(k) if _is_credential_value(v) else v)
+                for k, v in server.env.items()
+            }
+    else:
+        raw["url"] = server.url or ""
+        if server.headers:
+            raw["headers"] = {
+                k: (_to_env_placeholder(k) if _is_credential_value(v) else v)
+                for k, v in server.headers.items()
+            }
+    if server.include_tools:
+        raw["tools"] = {"include": list(server.include_tools)}
+        if server.exclude_tools:
+            raw["tools"]["exclude"] = list(server.exclude_tools)
+    elif server.exclude_tools:
+        raw["tools"] = {"exclude": list(server.exclude_tools)}
+    return raw
+
+
+def save_mcp_config(config: McpConfig, config_path: str | None = None) -> None:
+    """写回 McpConfig 到 YAML。PyYAML 覆盖写（丢注释），敏感信息转 ${VAR} 占位符。
+
+    config_path 缺省走 .env POIROT_MCP_CONFIG_PATH，再缺省 .poirot/mcp_servers.yaml。
+    写失败 logger.error，不抛。
+    """
+    if config_path is None:
+        config_path = os.environ.get("POIROT_MCP_CONFIG_PATH", _DEFAULT_CONFIG_PATH)
+    path = Path(config_path)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    data = {
+        "servers": {
+            name: _sanitize_server_dict(s) for name, s in config.servers.items()
+        },
+    }
+    if config.fallback_chains:
+        data["fallback_chains"] = config.fallback_chains
+    if config.core_tools:
+        data["core_tools"] = list(config.core_tools)
+    if config.tool_metadata:
+        data["tool_metadata"] = config.tool_metadata
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        logger.info("MCP config saved: %d servers", len(config.servers))
+    except (OSError, yaml.YAMLError) as exc:
+        logger.error("MCP config save failed: %s", exc)

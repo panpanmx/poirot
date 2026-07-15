@@ -62,6 +62,7 @@ class SidePanel(Static):
         model = cli_state.get("model", "?")
         mode = cli_state.get("mode", "default")
         sandbox_id = cli_state.get("sandbox_id", "")
+        mcp_servers = cli_state.get("mcp_servers", [])
         pct = fraction * 100.0
         pct_color = theme.ACCENT_WARN if pct >= 80 else theme.MARK_WINDOW
 
@@ -115,6 +116,23 @@ class SidePanel(Static):
         else:
             lines.append(mark_row(theme.TEXT_DIM, "Sandbox ID", "—"))
             lines.append(mark_row(theme.TEXT_DIM, "Status", "idle"))
+        lines.append(Text(""))
+
+        # MCP——已加载 server 列表
+        lines.append(header("MCP"))
+        if mcp_servers:
+            total_tools = sum(s.get("tool_count", 0) for s in mcp_servers)
+            for s in mcp_servers:
+                mark = theme.MARK_FREE if s.get("health_state") == "healthy" else theme.ACCENT_WARN
+                status_dot = "●" if s.get("health_state") == "healthy" else "○"
+                row = Text()
+                row.append("■ ", style=mark)
+                row.append(f"{s['name']}", style=theme.TEXT_PRIMARY)
+                row.append(f"  {s['transport']}  {status_dot}", style=theme.TEXT_DIM)
+                lines.append(row)
+            lines.append(mark_row(theme.MARK_MCP, "tools", f"{total_tools} loaded"))
+        else:
+            lines.append(mark_row(theme.TEXT_DIM, "servers", "none"))
         lines.append(Text(""))
 
         # 底部版本
