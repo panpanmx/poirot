@@ -45,9 +45,13 @@ class SandboxMiddleware(AgentMiddleware):
         first_acquire = sandbox_id is None
 
         if first_acquire:
-            thread_id = (
-                getattr(request.runtime, "context", None) or {}
-            ).get("thread_id")
+            config = getattr(request.runtime, "config", None) or {}
+            configurable = config.get("configurable", {}) if isinstance(config, dict) else {}
+            thread_id = configurable.get("thread_id")
+            if thread_id is None:
+                raise SandboxRuntimeError(
+                    "thread_id missing in runtime config (sandbox acquire requires thread_id)"
+                )
             sandbox_id = self._provider.acquire(thread_id)
             set_sandbox_id(sandbox_id)
 

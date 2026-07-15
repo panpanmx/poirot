@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from typing import Any
 
@@ -14,6 +15,7 @@ from poirot.backend.agents.config.schema import (
     RuntimeConfig,
     ToolConfig,
 )
+from poirot.backend.agents.sandbox.integration.config import SandboxConfig
 
 
 class ConfigError(ValueError):
@@ -74,6 +76,21 @@ def _validate(raw: dict[str, Any]) -> None:
         raise ConfigError("logs_root is required")
 
 
+def _build_sandbox_config() -> SandboxConfig:
+    """从 POIROT_SANDBOX_* 环境变量构造 SandboxConfig（懒加载，use 为空=禁用）。"""
+    return SandboxConfig(
+        use=os.environ.get("POIROT_SANDBOX_USE", ""),
+        image=os.environ.get("POIROT_SANDBOX_IMAGE", "all-in-one-sandbox:latest"),
+        port=int(os.environ.get("POIROT_SANDBOX_PORT", "18000") or "18000"),
+        container_prefix=os.environ.get("POIROT_SANDBOX_CONTAINER_PREFIX", "poirot-sandbox"),
+        executor=os.environ.get("POIROT_SANDBOX_EXECUTOR", "local") or "local",  # type: ignore[arg-type]
+        wsl_distro=os.environ.get("POIROT_SANDBOX_WSL_DISTRO") or None,
+        wsl_user=os.environ.get("POIROT_SANDBOX_WSL_USER") or None,
+        idle_timeout=int(os.environ.get("POIROT_SANDBOX_IDLE_TIMEOUT", "600") or "600"),
+        replicas=int(os.environ.get("POIROT_SANDBOX_REPLICAS", "3") or "3"),
+    )
+
+
 def _build_config(raw: dict[str, Any]) -> AppConfig:
     return AppConfig(
         name=raw["name"],
@@ -85,6 +102,7 @@ def _build_config(raw: dict[str, Any]) -> AppConfig:
         reporting=ReportingConfig(**raw["reporting"]),
         observability=ObservabilityConfig(**raw["observability"]),
         context_governance=ContextGovernanceConfig(**raw.get("context_governance", {})),
+        sandbox=_build_sandbox_config(),
     )
 
 

@@ -122,6 +122,16 @@ class ConversationInput(Input):
     }}
     """
 
+    def _on_mouse_down(self, event) -> None:
+        """放行鼠标事件给终端原生选取（避免 textual 捕获导致乱码 + 无法复制）。"""
+        event.prevent_default()
+
+    def _on_mouse_up(self, event) -> None:
+        event.prevent_default()
+
+    def _on_mouse_move(self, event) -> None:
+        event.prevent_default()
+
 
 class InputBox(Container):
     """底部深灰输入框——直角矩形 + 左细竖线，和历史消息卡片同一视觉语言，简约极客。
@@ -273,7 +283,7 @@ class PoirotTUI(App):
         yield WelcomeView(
             Static(render_logo(), id="logo"),
             Static(subtitle, id="subtitle"),
-            InputRow(Input(placeholder='Ask anything...  (输入 / 查看命令)', id="welcome-input")),
+            InputRow(ConversationInput(placeholder='Ask anything...  (输入 / 查看命令)', id="welcome-input")),
             Static("", id="tip"),
         )
         # 对话主体：左对话列 + 右信息面板
@@ -343,7 +353,7 @@ class PoirotTUI(App):
     def _apply_mcp_count(self, count: int) -> None:
         tip = self.query_one("#tip", Static)
         mcp_hint = f"{count} MCP tools" if count else "no MCP tools"
-        tip.update(f"{mcp_hint}  ·  /help 查看命令  ·  Ctrl+C 退出")
+        tip.update(f"{mcp_hint}  ·  Shift+拖动选取复制  ·  /help 命令  ·  Ctrl+C 退出")
         self._refresh_side_panel()
 
     def action_clear_screen(self) -> None:

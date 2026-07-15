@@ -9,7 +9,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "runtime": {
         "expert_mode": False,
         "timezone": "Asia/Shanghai",
-        "max_loop_steps": 4,
+        "max_loop_steps": 50,
         "timeout_seconds": 120,
         "output_root": ".poirot",
         "logs_root": ".poirot/logs",
@@ -54,7 +54,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 EXPERT_PROFILE: dict[str, Any] = {
     "runtime": {
         "expert_mode": True,
-        "max_loop_steps": 8,
+        "max_loop_steps": 100,
         "plan_enabled": True,
         "reflection_enabled": True,
     },

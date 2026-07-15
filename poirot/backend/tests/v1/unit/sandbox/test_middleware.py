@@ -22,7 +22,7 @@ def _make_request(
     request.tool_call = {"name": tool_name, "id": "call-1", "args": {}}
     request.state = {"sandbox": sandbox_state}
     request.runtime = MagicMock()
-    request.runtime.context = {"thread_id": thread_id}
+    request.runtime.config = {"configurable": {"thread_id": thread_id}}
     return request
 
 
