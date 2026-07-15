@@ -235,20 +235,47 @@ def bootstrap_runtime(
         })
         researcher_model_name = "routed:" + ",".join(router.chain_names("researcher"))
 
-    # MCP tool loading — logged to thread journal (success or failure).
+    # MCP tool loading — 通过 McpManager 门面加载，配置化 + 熔断器 + fallback。
     tools: dict[str, Any] = {}
+    mcp_manager = None
+    mcp_audit_middleware = None
     if _check_node_available():
         try:
-            mcp_tools = get_available_tools(include_mcp=True)
-            for tool in mcp_tools:
-                tools[tool.name] = tool
-            search_tool = select_search_tool(mcp_tools)
-            if search_tool:
-                tools["web_search_mcp"] = search_tool
-            thread_journal.append("mcp.loaded", {
-                "tools": list(tools.keys()),
-                "count": len(tools),
-            })
+            from poirot.backend.agents.mcp import build_mcp_manager
+
+            mcp_manager = build_mcp_manager()
+            if mcp_manager is not None:
+                import asyncio
+
+                try:
+                    asyncio.get_running_loop()
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        pool.submit(asyncio.run, mcp_manager.load_startup()).result()
+                except RuntimeError:
+                    asyncio.run(mcp_manager.load_startup())
+                mcp_tools = mcp_manager.get_tools(["core", "deferred"])
+                for tool in mcp_tools:
+                    tools[tool.name] = tool
+                search_tool = select_search_tool(mcp_tools)
+                if search_tool:
+                    tools["web_search_mcp"] = search_tool
+                mcp_audit_middleware = mcp_manager.get_audit_middleware()
+                # 注入 tool_metadata 到 context_governance.params，供外化层按工具调阈值
+                tool_metadata = mcp_manager.registry.get_all_metadata()
+                if tool_metadata:
+                    cg_params = dict(config.context_governance.params)
+                    cg_params["tool_metadata"] = tool_metadata
+                    config = replace(
+                        config,
+                        context_governance=replace(config.context_governance, params=cg_params),
+                    )
+                thread_journal.append("mcp.loaded", {
+                    "tools": list(tools.keys()),
+                    "count": len(tools),
+                })
+            else:
+                thread_journal.append("mcp.skipped", {"reason": "disabled or no servers"})
         except Exception as exc:
             thread_journal.append("mcp.load_failed", {"error": str(exc)})
     else:
@@ -289,6 +316,7 @@ def bootstrap_runtime(
         context_governance=config.context_governance,
         sandbox_provider=sandbox_provider,
         artifact_server=artifact_server,
+        mcp_audit_middleware=mcp_audit_middleware,
     )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,

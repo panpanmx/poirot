@@ -31,11 +31,21 @@ class ExternalizerExecutor:
         min_chars: int = 500,
         preview_chars: int = 500,
         exempt_rounds: int = 2,
+        tool_metadata: dict[str, dict] | None = None,
     ) -> None:
         self._dir = externalize_dir
         self._min_chars = min_chars
         self._preview_chars = preview_chars
         self._exempt_rounds = exempt_rounds
+        self._tool_metadata = tool_metadata or {}
+
+    def _get_threshold(self, tool_name: str | None) -> int:
+        """按工具元数据调阈值。有元数据取 max(min_chars, typical_tokens * 4)，无走 min_chars。"""
+        if tool_name and tool_name in self._tool_metadata:
+            typical_tokens = self._tool_metadata[tool_name].get("typical_output_tokens", 0)
+            if typical_tokens > 0:
+                return max(self._min_chars, typical_tokens * 4)
+        return self._min_chars
 
     def externalize_if_needed(self, tool_result: ToolMessage) -> ToolMessage | None:
         """外化单个 ToolMessage：写盘成功 → 返替换版（preview + path）；失败 → 返 None。
@@ -45,7 +55,8 @@ class ExternalizerExecutor:
         if tool_result.additional_kwargs.get(POIROT_EXTERNALIZED):
             return None
         text = self._extract_text(tool_result.content)
-        if len(text) <= self._min_chars:
+        threshold = self._get_threshold(tool_result.name)
+        if len(text) <= threshold:
             return None
         path = self._write_to_disk(text, tool_result.tool_call_id, tool_result.name)
         if path is None:

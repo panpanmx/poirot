@@ -39,53 +39,40 @@ def test_core_tool_names_contains_basics() -> None:
 
 
 def test_get_available_tools_groups_none_returns_all(monkeypatch) -> None:
-    fake_tools = [_make_tool("web_search"), _make_tool("deep_search")]
+    """get_available_tools(groups=None) 返全部 builtin。"""
     monkeypatch.setattr(
         "poirot.backend.agents.agent_tools.available.get_builtin_tools",
-        lambda: [_make_tool("web_search")],
+        lambda: [_make_tool("web_search"), _make_tool("deep_search")],
     )
-    monkeypatch.setattr(
-        "poirot.backend.agents.agent_tools.available.load_mcp_tools",
-        lambda: [_make_tool("deep_search")],
-    )
-    result = get_available_tools(groups=None, include_mcp=True)
+    result = get_available_tools(groups=None)
     assert {t.name for t in result} == {"web_search", "deep_search"}
 
 
 def test_get_available_tools_groups_core_filters(monkeypatch) -> None:
+    """groups=["core"] 只返 core 白名单内的 builtin。"""
     monkeypatch.setattr(
         "poirot.backend.agents.agent_tools.available.get_builtin_tools",
-        lambda: [_make_tool("web_search")],
+        lambda: [_make_tool("web_search"), _make_tool("deep_search")],
     )
-    monkeypatch.setattr(
-        "poirot.backend.agents.agent_tools.available.load_mcp_tools",
-        lambda: [_make_tool("deep_search"), _make_tool("browse_page")],
-    )
-    result = get_available_tools(groups=["core"], include_mcp=True)
-    assert {t.name for t in result} == {"web_search", "browse_page"}
+    result = get_available_tools(groups=["core"])
+    assert {t.name for t in result} == {"web_search"}
 
 
 def test_get_available_tools_groups_core_and_deferred_returns_all(monkeypatch) -> None:
+    """groups=["core","deferred"] 返 core + deferred builtin。"""
+    monkeypatch.setattr(
+        "poirot.backend.agents.agent_tools.available.get_builtin_tools",
+        lambda: [_make_tool("web_search"), _make_tool("deep_search")],
+    )
+    result = get_available_tools(groups=["core", "deferred"])
+    assert {t.name for t in result} == {"web_search", "deep_search"}
+
+
+def test_get_available_tools_no_mcp_loading(monkeypatch) -> None:
+    """get_available_tools 不再加载 MCP（include_mcp 参数保留但无 MCP 逻辑）。"""
     monkeypatch.setattr(
         "poirot.backend.agents.agent_tools.available.get_builtin_tools",
         lambda: [_make_tool("web_search")],
     )
-    monkeypatch.setattr(
-        "poirot.backend.agents.agent_tools.available.load_mcp_tools",
-        lambda: [_make_tool("deep_search"), _make_tool("browse_page")],
-    )
-    result = get_available_tools(groups=["core", "deferred"], include_mcp=True)
-    assert {t.name for t in result} == {"web_search", "deep_search", "browse_page"}
-
-
-def test_get_available_tools_exclude_mcp(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "poirot.backend.agents.agent_tools.available.get_builtin_tools",
-        lambda: [_make_tool("web_search")],
-    )
-    monkeypatch.setattr(
-        "poirot.backend.agents.agent_tools.available.load_mcp_tools",
-        lambda: [_make_tool("deep_search")],
-    )
-    result = get_available_tools(groups=None, include_mcp=False)
+    result = get_available_tools(groups=None, include_mcp=True)
     assert {t.name for t in result} == {"web_search"}

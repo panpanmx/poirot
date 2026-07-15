@@ -59,6 +59,7 @@ class DefaultStrategy:
             min_chars=params.get("externalize_min_chars", 500),
             preview_chars=params.get("externalize_preview_chars", 500),
             exempt_rounds=params.get("exempt_rounds", 2),
+            tool_metadata=params.get("tool_metadata"),
         )
         self._summarizer = SummarizerExecutor(
             model=summarize_model or model,
