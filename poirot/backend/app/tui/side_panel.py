@@ -61,6 +61,7 @@ class SidePanel(Static):
         mcp_count = cli_state.get("mcp_count", 0)
         model = cli_state.get("model", "?")
         mode = cli_state.get("mode", "default")
+        sandbox_id = cli_state.get("sandbox_id", "")
         pct = fraction * 100.0
         pct_color = theme.ACCENT_WARN if pct >= 80 else theme.MARK_WINDOW
 
@@ -104,6 +105,16 @@ class SidePanel(Static):
             f"{_format_tokens(tokens)} usage · {_format_tokens(max(0, usable))} usable",
             style=theme.TEXT_DIM,
         ))
+        lines.append(Text(""))
+
+        # Sandbox——沙箱状态
+        lines.append(header("Sandbox"))
+        if sandbox_id:
+            lines.append(mark_row(theme.MARK_WINDOW, "Sandbox ID", sandbox_id))
+            lines.append(mark_row(theme.MARK_FREE, "Status", "active"))
+        else:
+            lines.append(mark_row(theme.TEXT_DIM, "Sandbox ID", "—"))
+            lines.append(mark_row(theme.TEXT_DIM, "Status", "idle"))
         lines.append(Text(""))
 
         # 底部版本

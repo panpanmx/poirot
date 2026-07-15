@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 class _StreamEventBase(TypedDict):
     """流式事件标准化结构，供 CLI 消费渲染。"""
 
-    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "done" | "error" | "budget_update"
+    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "done" | "error" | "budget_update" | "sandbox_update"
     content: str
     tool_name: str | None
     tool_args: dict | None
@@ -228,6 +228,18 @@ class PoirotStreamClient:
                             "fraction": budget.get("fraction", 0.0),
                             "window": budget.get("window", 0),
                         },
+                    )
+
+                # sandbox_update：从 state.sandbox 提取 sandbox_id
+                sandbox_state = chunk.get("sandbox")
+                if sandbox_state and sandbox_state.get("sandbox_id"):
+                    yield StreamEvent(
+                        type="sandbox_update",
+                        content=sandbox_state["sandbox_id"],
+                        tool_name=None,
+                        tool_args=None,
+                        tool_result=None,
+                        msg_id=None,
                     )
 
                 messages = chunk.get("messages", [])

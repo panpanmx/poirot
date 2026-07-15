@@ -225,6 +225,7 @@ class PoirotTUI(App):
             "current_window": self._resolve_window(),
             "mcp_count": 0,
             "msg_count": 0,
+            "sandbox_id": "",
             "_running": False,
         }
         self.registry = get_registry()
@@ -499,6 +500,9 @@ class PoirotTUI(App):
                         frac = self.cli_state["current_tokens"] / win
                     self.cli_state["current_fraction"] = frac or 0.0
                     status.update_state(self.cli_state)
+                    self._refresh_side_panel()
+                if event.get("type") == "sandbox_update":
+                    self.cli_state["sandbox_id"] = event.get("content", "")
                     self._refresh_side_panel()
                 conv.render_event(event)
 

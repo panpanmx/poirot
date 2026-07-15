@@ -58,7 +58,7 @@ class TestGroupFiltering:
 
     def test_sandbox_tool_names_complete(self) -> None:
         assert SANDBOX_TOOL_NAMES == {
-            "bash", "read_file", "write_file", "list_dir", "str_replace"
+            "bash", "read_file", "write_file", "list_dir", "str_replace", "present_files"
         }
 
 

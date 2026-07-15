@@ -249,16 +249,16 @@ class TestStrReplaceTool:
 
 
 class TestMakeSandboxTools:
-    def test_returns_5_tools(self) -> None:
+    def test_returns_6_tools(self) -> None:
         provider = _make_mock_provider()
         tools = make_sandbox_tools(provider)
-        assert len(tools) == 5
+        assert len(tools) == 6
 
     def test_tool_names(self) -> None:
         provider = _make_mock_provider()
         tools = make_sandbox_tools(provider)
         names = {t.name for t in tools}
-        assert names == {"bash", "read_file", "write_file", "list_dir", "str_replace"}
+        assert names == {"bash", "read_file", "write_file", "list_dir", "str_replace", "present_files"}
 
     def test_all_are_base_tool(self) -> None:
         from langchain_core.tools import BaseTool

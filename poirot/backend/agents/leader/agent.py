@@ -94,7 +94,7 @@ class LeaderAgent:
             # F8.5：recursion_limit 调高让硬预算（30 工具调用）先生效。
             # create_agent 每个 middleware hook 各成独立 node，recursion 计数膨胀快，
             # 50 太低先触发；调到 150 让硬预算（基于 len(errors)）先生效优雅退出。
-            "recursion_limit": 300,
+            "recursion_limit": 500,
         }
 
         # MCP tools are async-only StructuredTool; graph must run in async mode.

@@ -34,6 +34,7 @@ def _build_middlewares(
     context_governance: Any = None,
     summarize_model: Any = None,
     sandbox_provider: Any = None,
+    artifact_server: Any = None,
 ) -> list:
     """全模式全挂 middleware，参数化控制行为差异。
 
@@ -59,11 +60,17 @@ def _build_middlewares(
         RunJournalMiddleware(),
     ])
     if sandbox_provider is not None:
-        from poirot.backend.agents.sandbox.integration.middleware import (
+        from poirot.backend.agents.middlewares.sandbox_middleware import (
             SandboxMiddleware,
         )
 
-        middlewares.append(SandboxMiddleware(provider=sandbox_provider))
+        from pathlib import Path
+        sandbox_root = str(Path.cwd() / ".poirot" / "sandbox" / "aio_docker")
+        middlewares.append(SandboxMiddleware(
+            provider=sandbox_provider,
+            artifact_server=artifact_server,
+            sandbox_root=sandbox_root,
+        ))
     middlewares.extend([
         LoopDetectionMiddleware(),
         ToolCallMiddleware(),
@@ -86,6 +93,7 @@ def make_lead_agent(
     runnable_config: RunnableConfig | None = None,
     context_governance: Any = None,
     sandbox_provider: Any = None,
+    artifact_server: Any = None,
 ) -> Any:
     """App-layer factory: expert_flag 参数化装配 graph。
 
@@ -138,7 +146,7 @@ def make_lead_agent(
         graph=create_agent(
             model=model,
             tools=tools or None,
-            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider),
+            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server),
             system_prompt=apply_prompt_template(expert_mode=resolved_expert),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),

@@ -14,7 +14,7 @@ from poirot.backend.agents.sandbox.utils.file_operation_lock import (
 )
 
 _BASH_OUTPUT_MAX_CHARS = 10000
-WRITE_FILE_MAX_BYTES = 80 * 1024
+WRITE_FILE_MAX_BYTES = 5 * 1024 * 1024
 
 
 def _truncate_output(
@@ -147,7 +147,7 @@ def _make_str_replace_tool(provider: SandboxProvider) -> BaseTool:
 def make_sandbox_tools(provider: SandboxProvider) -> list[BaseTool]:
     """工厂：构造 sandbox 工具集，闭包捕获 provider。
 
-    返回 5 个 @tool：bash / read_file / write_file / list_dir / str_replace。
+    返回 6 个 @tool：bash / read_file / write_file / list_dir / str_replace / present_files。
     工具内部用 ContextVar get_sandbox_id 获取 sandbox_id + provider.get 获取 Sandbox。
     """
     return [
@@ -156,4 +156,30 @@ def make_sandbox_tools(provider: SandboxProvider) -> list[BaseTool]:
         _make_write_file_tool(provider),
         _make_list_dir_tool(provider),
         _make_str_replace_tool(provider),
+        _make_present_files_tool(provider),
     ]
+
+
+def _make_present_files_tool(provider: SandboxProvider) -> BaseTool:
+    @tool("present_files", parse_docstring=True)
+    def present_files_tool(paths: list[str]) -> str:
+        """Declare files as deliverable artifacts. The system generates downloadable URLs for the user to access these files via browser.
+
+        Call this after generating final output files (pptx, csv, py, pdf, etc.) in the sandbox.
+        Files MUST be under /mnt/poirot/user-data/ (e.g. /mnt/poirot/user-data/workspace/report.pptx).
+        Files in other paths (e.g. /home/...) are not accessible to the host and cannot be delivered.
+
+        Args:
+            paths: Virtual paths to files under /mnt/poirot/user-data/ (e.g. /mnt/poirot/user-data/workspace/report.pptx).
+        """
+        _REQUIRED_PREFIX = "/mnt/poirot/user-data/"
+        invalid = [p for p in paths if not p.startswith(_REQUIRED_PREFIX)]
+        if invalid:
+            raise SandboxRuntimeError(
+                f"present_files: paths must be under {_REQUIRED_PREFIX}. "
+                f"Invalid: {invalid}. Copy files there first with: "
+                f"bash('cp <src> /mnt/poirot/user-data/workspace/<filename>')"
+            )
+        return f"Presented {len(paths)} file(s): {', '.join(paths)}"
+
+    return present_files_tool

@@ -23,7 +23,7 @@ from langgraph.types import Command
 from poirot.backend.agents.middlewares.run_journal_middleware import _get_runtime_value
 from poirot.backend.agents.state.types import AgentError, ThreadState
 
-_RETRY_BUDGET = 3          # per-tool 连续失败上限（禁工具）
+_RETRY_BUDGET = 5          # per-tool 连续失败上限（禁工具）
 _HARD_BUDGET = 30          # run 级工具调用总数上限
 _SUMMARY_THRESHOLDS = (3, 6, 9)  # 失败摘要递进注入阈值
 

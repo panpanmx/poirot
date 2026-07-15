@@ -8,7 +8,7 @@ from langchain_core.messages import ToolMessage
 
 from poirot.backend.agents.sandbox.contracts import SandboxProvider
 from poirot.backend.agents.sandbox.integration.context import set_sandbox_id
-from poirot.backend.agents.sandbox.integration.middleware import SandboxMiddleware
+from poirot.backend.agents.middlewares.sandbox_middleware import SandboxMiddleware
 from langgraph.types import Command
 
 

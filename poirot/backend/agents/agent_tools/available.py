@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # core: 基础工具，default + expert 都加载（省上下文）
 # deferred: 深度工具，仅 expert 加载
 CORE_TOOL_NAMES: set[str] = {"web_search", "browse_page", "read_snapshot"}
-SANDBOX_TOOL_NAMES: set[str] = {"bash", "read_file", "write_file", "list_dir", "str_replace"}
+SANDBOX_TOOL_NAMES: set[str] = {"bash", "read_file", "write_file", "list_dir", "str_replace", "present_files"}
 
 
 def _tool_group(name: str) -> str:

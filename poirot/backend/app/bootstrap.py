@@ -262,7 +262,9 @@ def bootstrap_runtime(
     # Sandbox 装配（Grill #9：config 配了 provider 就加载，不论模式）
     sandbox_provider = _load_sandbox_provider(config)
     sandbox_tools = []
+    artifact_server = None
     if sandbox_provider is not None:
+        from poirot.backend.agents.artifacts.server import ArtifactServer
         from poirot.backend.agents.sandbox.integration.tools import make_sandbox_tools
         from poirot.backend.agents.sandbox.integration.bootstrap_sandbox import (
             register_sandbox_shutdown,
@@ -270,6 +272,8 @@ def bootstrap_runtime(
 
         sandbox_tools = make_sandbox_tools(sandbox_provider)
         register_sandbox_shutdown(sandbox_provider)
+        artifact_server = ArtifactServer()
+        artifact_server.start()
 
     all_tools = {**tools, **{t.name: t for t in sandbox_tools}}
     registry = CapabilityRegistry(
@@ -284,6 +288,7 @@ def bootstrap_runtime(
         capability_registry=registry,
         context_governance=config.context_governance,
         sandbox_provider=sandbox_provider,
+        artifact_server=artifact_server,
     )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,

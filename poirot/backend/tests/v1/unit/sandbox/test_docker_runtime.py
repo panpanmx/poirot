@@ -221,25 +221,23 @@ class TestWriteFile:
     def test_write(self) -> None:
         rt = _make_runtime()
         rt.write_file("/path", "content")
-        rt._client.file.write_file.assert_called_once_with(file="/path", content="content")
+        rt._client.file.write_file.assert_called_once_with(file="/path", content="content", append=False)
 
     def test_append_concatenates(self) -> None:
         rt = _make_runtime()
         rt._client.file.read_file.return_value = _make_result(content="old")
         rt.write_file("/path", "new", append=True)
-        rt._client.file.write_file.assert_called_once_with(file="/path", content="oldnew")
+        rt._client.file.write_file.assert_called_once_with(file="/path", content="new", append=True)
 
     def test_append_not_found_writes_new(self) -> None:
         rt = _make_runtime()
-        rt._client.file.read_file.side_effect = Exception("File not found")
         rt.write_file("/path", "new", append=True)
-        rt._client.file.write_file.assert_called_once_with(file="/path", content="new")
+        rt._client.file.write_file.assert_called_once_with(file="/path", content="new", append=True)
 
     def test_append_empty_existing_writes_content(self) -> None:
         rt = _make_runtime()
-        rt._client.file.read_file.return_value = _make_result(content="")
         rt.write_file("/path", "new", append=True)
-        rt._client.file.write_file.assert_called_once_with(file="/path", content="new")
+        rt._client.file.write_file.assert_called_once_with(file="/path", content="new", append=True)
 
     def test_permission_denied(self) -> None:
         rt = _make_runtime()

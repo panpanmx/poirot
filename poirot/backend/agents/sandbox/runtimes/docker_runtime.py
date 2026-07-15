@@ -27,7 +27,7 @@ from poirot.backend.agents.sandbox.utils.search import (
 logger = logging.getLogger(__name__)
 
 _MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
-_DEFAULT_NO_CHANGE_TIMEOUT = 600
+_DEFAULT_NO_CHANGE_TIMEOUT = 1800
 _ERROR_OBSERVATION_SIGNATURE = "'ErrorObservation' object has no attribute 'exit_code'"
 VIRTUAL_PATH_PREFIX = "/mnt/poirot/user-data"
 
@@ -114,14 +114,7 @@ class DockerRuntime:
             if self._closed:
                 raise SandboxRuntimeError("runtime already closed")
             try:
-                if append:
-                    try:
-                        existing = self.read_file(path)
-                    except SandboxFileNotFoundError:
-                        existing = ""
-                    if existing:
-                        content = existing + content
-                self._client.file.write_file(file=path, content=content)
+                self._client.file.write_file(file=path, content=content, append=append)
             except SandboxError:
                 raise
             except Exception as exc:
