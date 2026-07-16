@@ -207,7 +207,7 @@ class PoirotTUI(App):
         Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("ctrl+l", "clear_screen", "Clear", show=False),
         Binding("ctrl+p", "toggle_command_palette", "Commands", show=False),
-        Binding("ctrl+m", "toggle_mcp_panel", "MCP", show=True),
+        Binding("ctrl+n", "toggle_mcp_panel", "MCP", show=True, priority=True),
     ]
 
     def __init__(self, runtime: Any, provider: str | None = None, model: str | None = None) -> None:
