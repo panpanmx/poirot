@@ -188,3 +188,33 @@ class TestInstall:
 
         assert not (dest_root / "source-verification" / "stale.txt").exists()
         assert _IMP_ID_RE.match(sid)
+
+    def test_install_invalid_name_path_traversal_raises(self, tmp_path):
+        """install 名含 ../ 逃逸 → ValueError。"""
+        source = tmp_path / "src"
+        source.mkdir()
+        _write_skill_md(source / "SKILL.md")
+        dest_root = tmp_path / "dest"
+        dest_root.mkdir()
+        with pytest.raises(ValueError, match="invalid skill name"):
+            install(source, "../evil", dest_root)
+
+    def test_install_invalid_name_uppercase_raises(self, tmp_path):
+        """install 名含大写/空格 → ValueError。"""
+        source = tmp_path / "src"
+        source.mkdir()
+        _write_skill_md(source / "SKILL.md")
+        dest_root = tmp_path / "dest"
+        dest_root.mkdir()
+        with pytest.raises(ValueError, match="invalid skill name"):
+            install(source, "Evil Name", dest_root)
+
+    def test_parse_skill_file_crlf_frontmatter(self, tmp_path):
+        """CRLF 换行的 frontmatter 也能解析。"""
+        skill_dir = tmp_path / "crlf-skill"
+        skill_dir.mkdir()
+        content = "---\r\nname: crlf-test\r\ndescription: CRLF test\r\n---\r\n\r\nbody\r\n"
+        (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+        rec = parse_skill_file(skill_dir / "SKILL.md")
+        assert rec.name == "crlf-test"
+        assert rec.description == "CRLF test"

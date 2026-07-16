@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+import pytest
+
 from poirot.backend.agents.skill.store import SQLiteSkillStore
 from poirot.backend.agents.skill.types import SkillLineage, SkillRecord
 
@@ -217,4 +219,73 @@ def test_get_versions_ordered_by_generation(tmp_path):
     assert [v.lineage.generation for v in versions] == [0, 1, 2]
     assert versions[0].skill_id == "sv__imp_v1"
     assert versions[2].skill_id == "sv__v3_v3"
+    store.close()
+
+
+# ── create_version 重复 skill_id 抛 ValueError ──────────────
+
+def test_create_version_duplicate_skill_id_raises(tmp_path):
+    """同 skill_id 二次 create_version 抛 ValueError（保护 is_active 单指针不变量）。"""
+    store = SQLiteSkillStore(tmp_path / "skills.db")
+    v1 = _make_record(skill_id="sv__imp_v1", content_hash="h1")
+    store.register(v1)
+
+    v2 = _make_record(
+        skill_id="sv__v2_v2",
+        content_hash="h2",
+        lineage=SkillLineage(
+            parent_skill_ids=("sv__imp_v1",), generation=1, origin="FIXED"
+        ),
+    )
+    store.create_version("sv__imp_v1", v2, "FIXED")
+
+    # 二次 create_version 同 skill_id → ValueError
+    with pytest.raises(ValueError, match="skill_id already exists"):
+        store.create_version("sv__imp_v1", v2, "FIXED")
+    store.close()
+
+
+# ── discover 同步文件变更 ───────────────────────────────────
+
+def test_discover_updates_changed_file(tmp_path):
+    """discover: skill_id 已存在时 UPDATE path/content_hash/description。"""
+    import hashlib
+
+    from poirot.backend.agents.skill.parser import parse_skill_file
+
+    store = SQLiteSkillStore(tmp_path / "skills.db")
+
+    skill_dir = tmp_path / "skills" / "my-skill"
+    skill_dir.mkdir(parents=True)
+    skill_md = skill_dir / "SKILL.md"
+    skill_md.write_text(
+        "---\nname: my-skill\ndescription: original\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+
+    # 首次 discover 注册
+    results = store.discover([tmp_path / "skills"])
+    assert len(results) == 1
+    rec1 = results[0]
+    assert rec1.description == "original"
+    orig_hash = rec1.content_hash
+
+    # 编辑 SKILL.md（改 description）
+    skill_md.write_text(
+        "---\nname: my-skill\ndescription: changed\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+
+    # 二次 discover → store.get 返回新 description + 新 content_hash
+    results2 = store.discover([tmp_path / "skills"])
+    assert len(results2) == 1
+    rec2 = results2[0]
+    assert rec2.description == "changed"
+    assert rec2.content_hash != orig_hash
+
+    # 从 store 验证 DB 已更新
+    got = store.get(rec1.skill_id)
+    assert got is not None
+    assert got.description == "changed"
+    assert got.content_hash != orig_hash
     store.close()

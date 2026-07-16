@@ -142,6 +142,8 @@ class SQLiteSkillStore:
         """幂等注册。INSERT OR IGNORE；已存在 skill_id 返回现有不覆盖。
 
         INVARIANT: 同 skill_id 二次 register 不覆盖、不报错。
+        计数器（total_selections 等）由 schema DEFAULT 0 初始化，record 携带的
+        metrics 值不写入（register 只注册元数据 + path + content_hash）。
         """
         with self._mu:
             self._conn.execute(
@@ -193,9 +195,11 @@ class SQLiteSkillStore:
             return [self._row_to_record(r) for r in rows]
 
     def discover(self, dirs: list[Path]) -> list[SkillRecord]:
-        """扫描 dirs 找 SKILL.md，parse → register → 返回列表。
+        """扫描 dirs 找 SKILL.md，parse → upsert → 返回列表。
 
         INVARIANT: lazy import parser（B4 并行实现，避免循环依赖）。
+        skill_id 已存在时同步文件变更（path/content_hash/description/
+        allowed_tools/enabled），保证 discover 后索引不过期。
         """
         from poirot.backend.agents.skill.parser import parse_skill_file
 
@@ -203,9 +207,45 @@ class SQLiteSkillStore:
         for d in dirs:
             for skill_md in Path(d).rglob("SKILL.md"):
                 record = parse_skill_file(skill_md)
-                self.register(record)
+                self._upsert_record(record)
                 results.append(record)
         return results
+
+    def _upsert_record(self, record: SkillRecord) -> None:
+        """INSERT OR IGNORE；已存在则 UPDATE 同步文件变更。持锁。"""
+        with self._mu:
+            cur = self._conn.execute(
+                """INSERT OR IGNORE INTO skill_records
+                     (skill_id, name, path, content_hash, is_active,
+                      generation, origin, created_by, description,
+                      allowed_tools, enabled, created_at, last_updated)
+                   VALUES (?,?,?,?,1,?,?,?,?,?,?,?,?)""",
+                (record.skill_id, record.name, record.path, record.content_hash,
+                 record.lineage.generation, record.lineage.origin,
+                 record.lineage.created_by, record.description,
+                 json.dumps(list(record.allowed_tools)),
+                 1 if record.enabled else 0,
+                 utc_now_iso(), utc_now_iso()),
+            )
+            if cur.rowcount == 0:
+                # 已存在，同步文件变更
+                self._conn.execute(
+                    """UPDATE skill_records
+                         SET path=?, content_hash=?, description=?,
+                             allowed_tools=?, enabled=?, last_updated=?
+                       WHERE skill_id=?""",
+                    (record.path, record.content_hash, record.description,
+                     json.dumps(list(record.allowed_tools)),
+                     1 if record.enabled else 0,
+                     utc_now_iso(), record.skill_id),
+                )
+            if record.lineage.parent_skill_ids:
+                for pid in record.lineage.parent_skill_ids:
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO skill_lineage_parents VALUES (?,?)",
+                        (record.skill_id, pid),
+                    )
+            self._conn.commit()
 
     # ── version DAG ──────────────────────────────────────────
 
@@ -213,10 +253,11 @@ class SQLiteSkillStore:
         """建新 version node。新 is_active=1 + 同名旧 is_active=0 + lineage_parents。
 
         INVARIANT: 新 skill_id 由调用方传入 record.skill_id（不在此生成）。
+        重复 skill_id 抛 ValueError（保护 is_active 单指针不变量）。
         """
         with self._mu:
             ts = utc_now_iso()
-            self._conn.execute(
+            cur = self._conn.execute(
                 """INSERT OR IGNORE INTO skill_records
                      (skill_id, name, path, content_hash, is_active,
                       generation, origin, created_by, description,
@@ -227,12 +268,12 @@ class SQLiteSkillStore:
                  record.description, json.dumps(list(record.allowed_tools)),
                  1 if record.enabled else 0, ts, ts),
             )
+            if cur.rowcount == 0:
+                raise ValueError(f"skill_id already exists: {record.skill_id}")
+            # deactivate 同名除 new 外（new 的 is_active=1 由 schema DEFAULT 保证）
             self._conn.execute(
-                "UPDATE skill_records SET is_active=0 WHERE name=?", (record.name,)
-            )
-            self._conn.execute(
-                "UPDATE skill_records SET is_active=1 WHERE skill_id=?",
-                (record.skill_id,),
+                "UPDATE skill_records SET is_active=0 WHERE name=? AND skill_id<>?",
+                (record.name, record.skill_id),
             )
             self._conn.execute(
                 "INSERT OR IGNORE INTO skill_lineage_parents VALUES (?,?)",
@@ -273,6 +314,7 @@ class SQLiteSkillStore:
 
     # ── helpers ──────────────────────────────────────────────
 
+    # TODO(perf): list_active/get_versions hot path 批量取 lineage（当前 N+1，skill<20 可接受）
     def _row_to_record(self, row: sqlite3.Row) -> SkillRecord:
         """sqlite Row → SkillRecord。还原 allowed_tools tuple + lineage。"""
         parent_rows = self._conn.execute(
@@ -308,3 +350,4 @@ class SQLiteSkillStore:
     def close(self) -> None:
         with self._mu:
             self._conn.close()
+            self._conn = None

@@ -22,7 +22,7 @@ import yaml
 from poirot.backend.agents.skill.types import SkillLineage, SkillRecord
 
 _SKILL_ID_FILE = ".skill_id"
-_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)", re.DOTALL)
+_FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)", re.DOTALL)
 
 
 def _generate_skill_id(name: str, origin: str, generation: int) -> str:
@@ -96,7 +96,12 @@ def parse_skill_file(skill_file: Path) -> SkillRecord:
 
 
 def install(source_dir: Path, name: str, dest_root: Path) -> str:
-    """拷 source_dir → dest_root/{name}/，解析 SKILL.md 注册，返回 skill_id。"""
+    """拷 source_dir → dest_root/{name}/，解析 SKILL.md 注册，返回 skill_id。
+
+    name 只允许 [a-z0-9-]+，拒绝 `../` 或绝对路径逃逸。
+    """
+    if not re.fullmatch(r"[a-z0-9-]+", name):
+        raise ValueError(f"invalid skill name: {name!r}")
     dest_dir = dest_root / name
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
