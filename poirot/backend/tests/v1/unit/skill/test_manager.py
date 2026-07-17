@@ -19,6 +19,7 @@ def _env(monkeypatch, tmp_path, *, enabled=True, dirs=None):
     monkeypatch.setenv("POIROT_SKILL_ENABLED", "true" if enabled else "false")
     monkeypatch.setenv("POIROT_SKILL_DB_PATH", str(tmp_path / "skills.db"))
     monkeypatch.setenv("POIROT_SKILL_DIRS", dirs if dirs else str(tmp_path))
+    monkeypatch.setenv("POIROT_SKILL_INCLUDE_BUILTIN", "false")  # 隔离 builtin，测用户 skill
 
 
 def test_load_startup_discovers_and_builds_middleware(tmp_path, monkeypatch):
@@ -54,6 +55,18 @@ def test_load_startup_idempotent(tmp_path, monkeypatch):
     mgr.load_startup()
     mgr.load_startup()  # 二次 discover 不重复注册
     assert len(mgr.list_skills()) == 1
+
+
+def test_load_startup_includes_builtin_skills(tmp_path, monkeypatch):
+    """include_builtin=true 时用户 skill + 核心 builtin skill 均加载。"""
+    _write_skill(tmp_path, "skill-a")
+    _env(monkeypatch, tmp_path)
+    monkeypatch.setenv("POIROT_SKILL_INCLUDE_BUILTIN", "true")  # 覆盖 _env 的 false
+    mgr = build_skill_manager()
+    mgr.load_startup()
+    names = {s["name"] for s in mgr.list_skills()}
+    assert "skill-a" in names
+    assert "source-verification" in names  # builtin 核心 skill
 
 
 def test_build_skill_manager_disabled_returns_none(tmp_path, monkeypatch):

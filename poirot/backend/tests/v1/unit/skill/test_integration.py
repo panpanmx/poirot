@@ -115,6 +115,7 @@ def test_full_skill_assembly(tmp_path, monkeypatch):
     monkeypatch.setenv("POIROT_SKILL_ENABLED", "true")
     monkeypatch.setenv("POIROT_SKILL_DB_PATH", str(tmp_path / "skills.db"))
     monkeypatch.setenv("POIROT_SKILL_DIRS", str(tmp_path))
+    monkeypatch.setenv("POIROT_SKILL_INCLUDE_BUILTIN", "false")  # 隔离 builtin
 
     from poirot.backend.agents.skill import build_skill_manager
 

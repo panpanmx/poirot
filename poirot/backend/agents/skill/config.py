@@ -29,6 +29,7 @@ class SkillConfig:
     enabled: bool = False
     db_path: str = ".poirot/skills.db"
     skill_dirs: tuple[str, ...] = ("skills/",)
+    include_builtin: bool = True
     max_inject: int = 3
     quality_threshold: float = 0.3
     min_selections: int = 5
@@ -41,6 +42,7 @@ def load_skill_config() -> SkillConfig:
     """
     enabled = os.environ.get("POIROT_SKILL_ENABLED", "false").lower() == "true"
     db_path = os.environ.get("POIROT_SKILL_DB_PATH", ".poirot/skills.db")
+    include_builtin = os.environ.get("POIROT_SKILL_INCLUDE_BUILTIN", "true").lower() == "true"
 
     dirs_raw = os.environ.get("POIROT_SKILL_DIRS", "")
     if dirs_raw:
@@ -67,6 +69,7 @@ def load_skill_config() -> SkillConfig:
         enabled=enabled,
         db_path=db_path,
         skill_dirs=skill_dirs,
+        include_builtin=include_builtin,
         max_inject=max_inject,
         quality_threshold=quality_threshold,
         min_selections=min_selections,

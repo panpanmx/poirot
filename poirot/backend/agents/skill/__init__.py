@@ -21,6 +21,10 @@ __all__ = [
     "build_skill_manager",
 ]
 
+# 核心系统 skill 目录（随包提交，已验证）。与用户 skill（skills/，gitignore）同机制，
+# 均可经 frontmatter enabled:false 或 store 禁用。包相对路径，不依赖 cwd。
+_BUILTIN_SKILLS_DIR = Path(__file__).parent / "builtin_skills"
+
 
 class SkillManager:
     """skill 管理门面。聚合 store + selector + injection/metrics middleware。
@@ -41,8 +45,10 @@ class SkillManager:
         self._metrics: Any = None
 
     def load_startup(self, llm: Any | None = None) -> None:
-        """discover skill_dirs + sync + 建 selector/injection/metrics middleware。"""
+        """discover skill_dirs（用户）+ builtin_skills（核心）+ sync + 建 middleware。"""
         dirs = [Path(d) for d in self._config.skill_dirs]
+        if self._config.include_builtin and _BUILTIN_SKILLS_DIR.exists():
+            dirs.append(_BUILTIN_SKILLS_DIR)
         for rec in self._store.discover(dirs):
             try:
                 self._store.register(rec)
