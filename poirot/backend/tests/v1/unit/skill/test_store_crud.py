@@ -289,3 +289,54 @@ def test_discover_updates_changed_file(tmp_path):
     assert got.description == "changed"
     assert got.content_hash != orig_hash
     store.close()
+
+
+# ── set_enabled 持久 enable/disable ──────────────────────
+
+
+def test_set_enabled_persists(tmp_path):
+    """set_enabled 持久 SQLite，跨实例生效。"""
+    db = tmp_path / "skills.db"
+    store = SQLiteSkillStore(db)
+    rec = _make_record()
+    store.register(rec)
+    assert store.get(rec.skill_id).enabled is True  # 默认 enabled
+
+    assert store.set_enabled(rec.skill_id, False) is True
+    assert store.get(rec.skill_id).enabled is False
+    store.close()
+
+    # 跨实例（重启）仍禁用
+    store2 = SQLiteSkillStore(db)
+    assert store2.get(rec.skill_id).enabled is False
+    store2.close()
+
+
+def test_set_enabled_re_enable(tmp_path):
+    store = SQLiteSkillStore(tmp_path / "skills.db")
+    rec = _make_record()
+    store.register(rec)
+    store.set_enabled(rec.skill_id, False)
+    assert store.get(rec.skill_id).enabled is False
+    assert store.set_enabled(rec.skill_id, True) is True
+    assert store.get(rec.skill_id).enabled is True
+    store.close()
+
+
+def test_set_enabled_nonexistent_returns_false(tmp_path):
+    store = SQLiteSkillStore(tmp_path / "skills.db")
+    assert store.set_enabled("nonexistent__id", True) is False
+    store.close()
+
+
+def test_set_enabled_filtered_from_list_active(tmp_path):
+    """disabled skill 不在 list_active（selector 据此过滤）。"""
+    store = SQLiteSkillStore(tmp_path / "skills.db")
+    rec = _make_record()
+    store.register(rec)
+    assert len(store.list_active()) == 1
+    store.set_enabled(rec.skill_id, False)
+    # list_active 返 is_active=1（含 disabled），selector 另过滤 enabled
+    # 但 get_active/get 的 enabled=False
+    assert store.get(rec.skill_id).enabled is False
+    store.close()

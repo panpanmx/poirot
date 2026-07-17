@@ -85,6 +85,7 @@ class SkillStore(Protocol):
     def get(self, skill_id: str) -> SkillRecord | None: ...
     def get_active(self, name: str) -> SkillRecord | None: ...
     def list_active(self) -> list[SkillRecord]: ...
+    def set_enabled(self, skill_id: str, enabled: bool) -> bool: ...
 
     # version DAG
     def create_version(self, parent_id: str, record: SkillRecord, origin: str) -> str: ...
@@ -222,6 +223,19 @@ class SQLiteSkillStore:
                 "SELECT * FROM skill_records WHERE is_active=1"
             ).fetchall()
             return [self._row_to_record(r) for r in rows]
+
+    def set_enabled(self, skill_id: str, enabled: bool) -> bool:
+        """运行时持久 enable/disable。UPDATE enabled WHERE skill_id，返命中。持锁。
+
+        不经 frontmatter（frontmatter 是初始 enabled，store 是运行时态）。跨重启生效。
+        """
+        with self._mu:
+            cur = self._conn.execute(
+                "UPDATE skill_records SET enabled=? WHERE skill_id=?",
+                (1 if enabled else 0, skill_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
 
     def discover(self, dirs: list[Path], origin: str = "IMPORTED") -> list[SkillRecord]:
         """扫描 dirs 找 SKILL.md，parse（origin）→ upsert → 返回列表。

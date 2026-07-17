@@ -169,10 +169,12 @@ def _cmd_prompt(ctx: CommandContext) -> None:
 
 
 def _cmd_skill(ctx: CommandContext) -> None:
-    """Skill 激活命令：/skill <name> | /skill off | /skill list。
+    """Skill 命令：list | <name> | off | enable <name> | disable <name> | install <path> [name]。
 
-    持久 override（每轮生效，直到 /skill off）。设 cli_state["skill_override"]，
-    主循环注入 config["configurable"]["skill_override"]，SkillInjectionMiddleware 读取。
+    - <name>：持久 override（每轮生效，直到 off）
+    - off：清 override（不禁用 skill 本身，agent 仍可自动 select）
+    - enable/disable <name>：运行时持久 enable/disable（store.set_enabled，跨重启）
+    - install <path> [name]：parser.install 拷到 skills/ + re-discover（S2）
     """
     arg = ctx.arg.strip()
     if arg == "list":
@@ -194,18 +196,100 @@ def _cmd_skill(ctx: CommandContext) -> None:
         return
     if arg == "off":
         ctx.state["skill_override"] = []
-        ctx.console.print("[green]Skill override cleared[/green]")
+        ctx.console.print("[green]Skill override cleared (skill still enabled, agent may auto-select)[/green]")
+        return
+    # enable/disable <name>：运行时持久
+    parts = arg.split(maxsplit=1)
+    if parts and parts[0] in ("enable", "disable"):
+        if len(parts) < 2 or not parts[1].strip():
+            ctx.console.print("[yellow]Usage: /skill enable|disable <name>[/yellow]")
+            return
+        name = parts[1].strip()
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        if mgr is None:
+            ctx.console.print("[dim]Skill module not enabled[/dim]")
+            return
+        rec = mgr.store.get_active(name)
+        if rec is None:
+            ctx.console.print(f"[red]Skill not found: {name}[/red]")
+            return
+        enabled = parts[0] == "enable"
+        if mgr.store.set_enabled(rec.skill_id, enabled):
+            label = "enabled" if enabled else "disabled"
+            ctx.console.print(f"[green]Skill '{name}' {label}[/green]")
+        else:
+            ctx.console.print(f"[red]Skill not found: {name}[/red]")
+        return
+    # install <path> [name]：parser.install 拷到 skills/ + re-discover
+    if parts and parts[0] == "install":
+        rest = parts[1].strip() if len(parts) > 1 else ""
+        if not rest:
+            ctx.console.print("[yellow]Usage: /skill install <path> [name][/yellow]")
+            return
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        if mgr is None:
+            ctx.console.print("[dim]Skill module not enabled[/dim]")
+            return
+        from pathlib import Path
+        from poirot.backend.agents.skill.parser import install as install_skill
+        path_parts = rest.split()
+        src = Path(path_parts[0])
+        name = path_parts[1] if len(path_parts) > 1 else src.name
+        dest_root = Path("skills")
+        try:
+            skill_id = install_skill(src, name, dest_root)
+            mgr.load_startup()  # re-discover（idempotent upsert）
+            ctx.console.print(f"[green]Skill '{name}' installed (id={skill_id})[/green]")
+        except FileNotFoundError:
+            ctx.console.print(f"[red]Source path not found or no SKILL.md: {src}[/red]")
+        except ValueError as exc:
+            ctx.console.print(f"[red]Install failed: {exc}[/red]")
+        except Exception as exc:
+            ctx.console.print(f"[red]Install failed: {exc}[/red]")
         return
     if not arg:
         cur = ctx.state.get("skill_override") or []
         cur_label = ",".join(cur) if cur else "(none)"
         ctx.console.print(
-            f"[yellow]Usage: /skill <name> | /skill off | /skill list"
-            f"  (current: {cur_label})[/yellow]"
+            f"[yellow]Usage: /skill <name> | /skill off (clear override) | "
+            f"/skill enable <name> | /skill disable <name> | /skill install <path> [name] | /skill list"
+            f"  (current override: {cur_label})[/yellow]"
         )
         return
     ctx.state["skill_override"] = [arg]
     ctx.console.print(f"[green]Skill '{arg}' activated[/green]")
+
+
+def _cmd_mcp(ctx: CommandContext) -> None:
+    """MCP 命令：list | reload。
+
+    - list：展示 servers + transport + 工具数 + 健康状态
+    - reload：设 pending_mcp_reload，主循环检测后 runtime.reload_mcp_tools() 重建 graph
+    """
+    arg = ctx.arg.strip()
+    mgr = getattr(ctx.runtime, "mcp_manager", None)
+    if arg == "list":
+        if mgr is None:
+            ctx.console.print("[dim]MCP module not enabled[/dim]")
+            return
+        servers = mgr.list_servers()
+        if not servers:
+            ctx.console.print("[dim]No MCP servers configured[/dim]")
+            return
+        ctx.console.print("[bold]MCP servers:[/bold]")
+        for s in servers:
+            health_color = "green" if s["health_state"] == "healthy" else "red"
+            ctx.console.print(
+                f"  [cyan]{s['name']}[/cyan] {s['transport']} "
+                f"tools={s['tool_count']} "
+                f"[{health_color}]{s['health_state']}[/{health_color}]"
+            )
+        return
+    if arg == "reload":
+        ctx.state["pending_mcp_reload"] = True
+        ctx.console.print("[green]MCP tools will reload next round[/green]")
+        return
+    ctx.console.print("[yellow]Usage: /mcp list | /mcp reload[/yellow]")
 
 
 # ---- 模块级 registry：注册全部 builtin 命令 ----
@@ -224,7 +308,8 @@ _registry.register(CommandSpec("/tools", "List available tools", _cmd_tools))
 _registry.register(CommandSpec("/model", "Show current model routing chain", _cmd_model))
 _registry.register(CommandSpec("/thread", "Show thread info", _cmd_thread))
 _registry.register(CommandSpec("/prompt", "Prompt management (list|show <cat/name>|reload)", _cmd_prompt))
-_registry.register(CommandSpec("/skill", "Skill activation (list|<name>|off)", _cmd_skill))
+_registry.register(CommandSpec("/skill", "Skill control (list|<name>|off|enable <name>|disable <name>|install <path> [name])", _cmd_skill))
+_registry.register(CommandSpec("/mcp", "MCP control (list|reload)", _cmd_mcp))
 
 
 def get_registry() -> CommandRegistry:

@@ -120,6 +120,7 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
     # 由 renderer 收到 budget_update 事件时回填（见 stream_handler._update_budget）
     cli_state: dict[str, Any] = {
         "pending_expert_mode": None,
+        "pending_mcp_reload": None,
         "skill_override": [],
         "mode": "expert" if runtime.config.runtime.expert_mode else "default",
         "model": _resolve_actual_model_name(runtime.capability_registry),
@@ -127,8 +128,16 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
         "current_fraction": 0.0,
         "current_window": 0,
     }
+    # skill_provider：惰性取当前 runtime 的 active skill 名（闭包读最新 runtime，
+    # switch/reload 后 runtime 重绑定，闭包见新值）。供 /skill <name> 补全。
+    def _skill_names_provider():
+        mgr = getattr(runtime, "skill_manager", None)
+        if mgr is None:
+            return []
+        return [s["name"] for s in mgr.list_skills()]
+
     session: PromptSession = PromptSession(
-        completer=SlashCommandCompleter(get_registry()),
+        completer=SlashCommandCompleter(get_registry(), skill_provider=_skill_names_provider),
         complete_while_typing=True,
         complete_style=CompleteStyle.COLUMN,
         bottom_toolbar=lambda: build_bottom_toolbar(cli_state),
@@ -242,6 +251,12 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
             if pending_report is not None:
                 cli_state["pending_report"] = None
                 _trigger_report(pending_report, runtime, console)
+
+            # /mcp reload 命令：重建 leader_agent graph（复用 reload_mcp_tools）
+            if cli_state.get("pending_mcp_reload"):
+                cli_state["pending_mcp_reload"] = None
+                runtime = runtime.reload_mcp_tools()
+                console.print("[green]MCP tools reloaded[/green]\n")
             continue
 
         # 用户输入卡片化回显（/命令不套卡片——它们是系统操作，不是对话）
