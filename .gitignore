@@ -33,6 +33,9 @@ ENV/
 # 核心系统 skill 在 poirot/backend/agents/skill/builtin_skills/（随包提交）
 # skills/ 是用户上传存储位，不追踪；多用户结构 skills/users/{user_id}/{name}/
 skills/
+# .skill_id sidecar 是 generated artifact（IMPORTED/EVOLVED），不追踪；
+# BUILTIN 核心 skill 用确定性 id 无 sidecar
+.skill_id
 
 # === Test / coverage cache ===
 .pytest_cache/

@@ -45,15 +45,19 @@ class SkillManager:
         self._metrics: Any = None
 
     def load_startup(self, llm: Any | None = None) -> None:
-        """discover skill_dirs（用户）+ builtin_skills（核心）+ sync + 建 middleware。"""
-        dirs = [Path(d) for d in self._config.skill_dirs]
-        if self._config.include_builtin and _BUILTIN_SKILLS_DIR.exists():
-            dirs.append(_BUILTIN_SKILLS_DIR)
-        for rec in self._store.discover(dirs):
+        """discover skill_dirs（用户 IMPORTED）+ builtin_skills（核心 BUILTIN）+ sync + 建 middleware。"""
+        user_dirs = [Path(d) for d in self._config.skill_dirs]
+        for rec in self._store.discover(user_dirs, origin="IMPORTED"):
             try:
                 self._store.register(rec)
             except Exception:
                 pass
+        if self._config.include_builtin and _BUILTIN_SKILLS_DIR.exists():
+            for rec in self._store.discover([_BUILTIN_SKILLS_DIR], origin="BUILTIN"):
+                try:
+                    self._store.register(rec)
+                except Exception:
+                    pass
 
         self._selector = SkillSelector(
             self._store, llm,

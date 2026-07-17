@@ -81,7 +81,7 @@ class SkillStore(Protocol):
 
     # 注册 / 发现
     def register(self, record: SkillRecord) -> str: ...
-    def discover(self, dirs: list[Path]) -> list[SkillRecord]: ...
+    def discover(self, dirs: list[Path], origin: str = "IMPORTED") -> list[SkillRecord]: ...
     def get(self, skill_id: str) -> SkillRecord | None: ...
     def get_active(self, name: str) -> SkillRecord | None: ...
     def list_active(self) -> list[SkillRecord]: ...
@@ -223,10 +223,11 @@ class SQLiteSkillStore:
             ).fetchall()
             return [self._row_to_record(r) for r in rows]
 
-    def discover(self, dirs: list[Path]) -> list[SkillRecord]:
-        """扫描 dirs 找 SKILL.md，parse → upsert → 返回列表。
+    def discover(self, dirs: list[Path], origin: str = "IMPORTED") -> list[SkillRecord]:
+        """扫描 dirs 找 SKILL.md，parse（origin）→ upsert → 返回列表。
 
-        INVARIANT: lazy import parser（B4 并行实现，避免循环依赖）。
+        INVARIANT: lazy import parser（避免循环依赖）。
+        origin: IMPORTED（用户 skill，sidecar）| BUILTIN（核心 skill，确定性 id）。
         skill_id 已存在时同步文件变更（path/content_hash/description/
         allowed_tools/enabled），保证 discover 后索引不过期。
         """
@@ -235,7 +236,7 @@ class SQLiteSkillStore:
         results: list[SkillRecord] = []
         for d in dirs:
             for skill_md in Path(d).rglob("SKILL.md"):
-                record = parse_skill_file(skill_md)
+                record = parse_skill_file(skill_md, origin=origin)
                 self._upsert_record(record)
                 results.append(record)
         return results

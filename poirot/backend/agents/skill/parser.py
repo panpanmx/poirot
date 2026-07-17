@@ -1,13 +1,14 @@
 """SKILL.md YAML frontmatter 解析 + .skill_id sidecar + install。
 
 INVARIANT:
-- .skill_id sidecar 持久 id：首次生成写文件，已存在则读（目录改名 id 不变）
+- .skill_id sidecar 持久 id（仅 IMPORTED/EVOLVED）：首次生成写文件，已存在则读（目录改名 id 不变）
 - IMPORTED: {name}__imp_{uuid8}；EVOLVED: {name}__v{generation}_{uuid8}
+- BUILTIN: {name}__builtin（确定性，无 sidecar，核心 skill 随包 id 可复现）
 - frontmatter 必需 name + description，缺则 ValueError
 - allowed-tools YAML list → tuple；缺省 ()
 - enabled 缺省 True
 - content_hash = sha256(SKILL.md 全文)[:16]
-- SkillRecord.lineage.origin 固定 "IMPORTED"（parser 只处理导入，版本演进走 store.create_version）
+- SkillRecord.lineage.origin 由 parse_skill_file origin 参数定（IMPORTED/BUILTIN；版本演进走 store.create_version）
 """
 from __future__ import annotations
 
@@ -26,7 +27,13 @@ _FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)", re.DOTALL)
 
 
 def _generate_skill_id(name: str, origin: str, generation: int) -> str:
-    """按 origin 生成 skill_id。IMPORTED → {name}__imp_{uuid8}；EVOLVED → {name}__v{gen}_{uuid8}。"""
+    """按 origin 生成 skill_id。
+
+    BUILTIN → {name}__builtin（确定性）；IMPORTED → {name}__imp_{uuid8}；
+    EVOLVED → {name}__v{gen}_{uuid8}。
+    """
+    if origin == "BUILTIN":
+        return f"{name}__builtin"
     short = uuid.uuid4().hex[:8]
     if origin == "IMPORTED":
         return f"{name}__imp_{short}"
@@ -38,8 +45,11 @@ def read_or_create_skill_id(
 ) -> str:
     """读 .skill_id sidecar；不存在则生成并写。
 
-    目录改名 id 不变（sidecar 随目录走）。
+    BUILTIN origin：确定性 id `{name}__builtin`，不读不写 sidecar（核心 skill 随包，id 可复现）。
+    IMPORTED/EVOLVED：sidecar 持久（目录改名 id 不变）。
     """
+    if origin == "BUILTIN":
+        return _generate_skill_id(name, origin, generation)
     sidecar = skill_dir / _SKILL_ID_FILE
     if sidecar.exists():
         return sidecar.read_text(encoding="utf-8").strip()
@@ -48,11 +58,12 @@ def read_or_create_skill_id(
     return skill_id
 
 
-def parse_skill_file(skill_file: Path) -> SkillRecord:
+def parse_skill_file(skill_file: Path, origin: str = "IMPORTED") -> SkillRecord:
     """解析 SKILL.md → SkillRecord。
 
     frontmatter: ---\\n{yaml}\\n---\\n{body}
     必需 name + description；可选 allowed-tools / enabled / related-skills。
+    origin: IMPORTED（用户 skill，sidecar）| BUILTIN（核心 skill，确定性 id）。
     """
     content = skill_file.read_text(encoding="utf-8")
     match = _FRONTMATTER_RE.match(content)
@@ -80,7 +91,7 @@ def parse_skill_file(skill_file: Path) -> SkillRecord:
     enabled = bool(fm.get("enabled", True))
 
     skill_dir = skill_file.parent
-    skill_id = read_or_create_skill_id(skill_dir, name)
+    skill_id = read_or_create_skill_id(skill_dir, name, origin=origin)
     content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
 
     return SkillRecord(
@@ -91,7 +102,7 @@ def parse_skill_file(skill_file: Path) -> SkillRecord:
         description=description,
         allowed_tools=allowed_tools,
         enabled=enabled,
-        lineage=SkillLineage(origin="IMPORTED"),
+        lineage=SkillLineage(origin=origin),
     )
 
 

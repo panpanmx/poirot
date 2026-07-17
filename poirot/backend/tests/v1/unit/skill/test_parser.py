@@ -79,6 +79,17 @@ class TestReadOrCreateSkillId:
         sid = read_or_create_skill_id(skill_dir, "evolved", origin="FIXED", generation=2)
         assert _EVOLVED_ID_RE.match(sid)
 
+    def test_builtin_origin_deterministic_no_sidecar(self, tmp_path):
+        skill_dir = tmp_path / "builtin"
+        skill_dir.mkdir()
+        sid = read_or_create_skill_id(skill_dir, "source-verification", origin="BUILTIN")
+        assert sid == "source-verification__builtin"
+        # 确定性：二次调用同 id
+        sid2 = read_or_create_skill_id(skill_dir, "source-verification", origin="BUILTIN")
+        assert sid2 == sid
+        # 无 sidecar 文件
+        assert not (skill_dir / ".skill_id").exists()
+
 
 # ── parse_skill_file ─────────────────────────────────────────────────
 
@@ -154,6 +165,16 @@ class TestParseSkillFile:
         rec1 = parse_skill_file(skill_dir / "SKILL.md")
         rec2 = parse_skill_file(skill_dir / "SKILL.md")
         assert rec1.content_hash == rec2.content_hash
+
+    def test_builtin_origin_deterministic_id_no_sidecar(self, tmp_path):
+        skill_dir = tmp_path / "source-verification"
+        skill_dir.mkdir()
+        _write_skill_md(skill_dir / "SKILL.md")
+        rec = parse_skill_file(skill_dir / "SKILL.md", origin="BUILTIN")
+        assert rec.skill_id == "source-verification__builtin"
+        assert rec.lineage.origin == "BUILTIN"
+        # BUILTIN 不写 sidecar
+        assert not (skill_dir / ".skill_id").exists()
 
 
 # ── install ──────────────────────────────────────────────────────────
