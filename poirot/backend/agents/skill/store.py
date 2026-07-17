@@ -18,7 +18,12 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from poirot.backend.agents.journal.events import utc_now_iso
-from poirot.backend.agents.skill.types import SkillLineage, SkillRecord
+from poirot.backend.agents.skill.types import (
+    SkillHealth,
+    SkillLineage,
+    SkillMetrics,
+    SkillRecord,
+)
 
 _SCHEMA_VERSION = 1
 
@@ -85,6 +90,30 @@ class SkillStore(Protocol):
     def create_version(self, parent_id: str, record: SkillRecord, origin: str) -> str: ...
     def get_versions(self, name: str) -> list[SkillRecord]: ...
     def rollback(self, skill_id: str) -> None: ...
+
+    # quality metrics 打点（基础层，L2/L3 只读）
+    # INVARIANT #5-#9: 4 计数器零 LLM 贯穿，applied 混合，task_completed run 级归因
+    def record_selection(self, skill_id: str) -> None: ...
+    def record_outcome(
+        self,
+        skill_id: str,
+        run_id: str,
+        applied: bool | None,
+        task_completed: bool,
+        note: str = "",
+    ) -> None: ...
+    def get_metrics(self, skill_id: str) -> SkillMetrics | None: ...
+    def get_top_skills(
+        self,
+        n: int,
+        metric: str = "effective_rate",
+        min_selections: int = 5,
+    ) -> list[SkillRecord]: ...
+    def health_check(
+        self,
+        threshold: float = 0.4,
+        min_selections: int = 5,
+    ) -> list[SkillHealth]: ...
 
 
 class SQLiteSkillStore:
@@ -311,6 +340,144 @@ class SQLiteSkillStore:
                 (name, skill_id),
             )
             self._conn.commit()
+
+    # ── quality metrics 打点 / 查询 ──────────────────────────
+
+    def record_selection(self, skill_id: str) -> None:
+        """total_selections += 1。持锁 + commit。
+
+        INVARIANT #6: selections 在 before_model 注入时打（确定）。
+        skill_id 不存在时静默（UPDATE 0 行，不抛）。
+        """
+        with self._mu:
+            self._conn.execute(
+                "UPDATE skill_records SET total_selections = total_selections + 1, "
+                "last_updated = ? WHERE skill_id = ?",
+                (utc_now_iso(), skill_id),
+            )
+            self._conn.commit()
+
+    def record_outcome(
+        self,
+        skill_id: str,
+        run_id: str,
+        applied: bool | None,
+        task_completed: bool,
+        note: str = "",
+    ) -> None:
+        """归因打点：applied 混合 + task_completed run 级。原子事务。
+
+        INVARIANT #7-#9:
+        - applied True → total_applied += 1
+        - applied True AND task_completed → total_completions += 1
+        - applied False AND NOT task_completed → total_fallbacks += 1
+        - applied None（guidance-skill）→ 三计数器均不变，只插 judgment
+        skill_id 不存在时静默跳过（避免孤立 judgment）。
+        """
+        with self._mu:
+            # 先验存在，不存在则跳过（避免孤立 judgment 行）
+            exists = self._conn.execute(
+                "SELECT 1 FROM skill_records WHERE skill_id=?", (skill_id,)
+            ).fetchone()
+            if exists is None:
+                return
+
+            inc_applied = 1 if applied is True else 0
+            inc_completion = 1 if (applied is True and task_completed) else 0
+            inc_fallback = 1 if (applied is False and not task_completed) else 0
+
+            self._conn.execute(
+                "UPDATE skill_records SET "
+                "total_applied = total_applied + ?, "
+                "total_completions = total_completions + ?, "
+                "total_fallbacks = total_fallbacks + ?, "
+                "last_updated = ? WHERE skill_id = ?",
+                (inc_applied, inc_completion, inc_fallback,
+                 utc_now_iso(), skill_id),
+            )
+            self._conn.execute(
+                "INSERT INTO skill_judgments "
+                "(run_id, skill_id, applied, task_completed, ts, note) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (run_id, skill_id,
+                 None if applied is None else (1 if applied else 0),
+                 1 if task_completed else 0, utc_now_iso(), note),
+            )
+            self._conn.commit()
+
+    def get_metrics(self, skill_id: str) -> SkillMetrics | None:
+        """读 4 计数器，算 4 rate（零除保护）。不存在返 None。"""
+        with self._mu:
+            row = self._conn.execute(
+                "SELECT total_selections, total_applied, total_completions, "
+                "total_fallbacks FROM skill_records WHERE skill_id=?",
+                (skill_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            sel = row["total_selections"]
+            app = row["total_applied"]
+            comp = row["total_completions"]
+            fb = row["total_fallbacks"]
+            return SkillMetrics(
+                skill_id=skill_id,
+                selections=sel,
+                applied=app,
+                completions=comp,
+                fallbacks=fb,
+                applied_rate=app / sel if sel else 0.0,
+                completion_rate=comp / app if app else 0.0,
+                effective_rate=comp / sel if sel else 0.0,
+                fallback_rate=fb / sel if sel else 0.0,
+            )
+
+    def get_top_skills(
+        self,
+        n: int,
+        metric: str = "effective_rate",
+        min_selections: int = 5,
+    ) -> list[SkillRecord]:
+        """按 metric 降序返 top n active skill。
+
+        INVARIANT #12: total_selections < min_selections 不参与排序
+        （anti-loop，给新 skill 数据积累）。
+        metric ∈ {effective_rate, applied_rate, completion_rate, fallback_rate}。
+        统一降序，调用方解释含义。
+        """
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT * FROM skill_records WHERE is_active=1 "
+                "AND total_selections >= ?",
+                (min_selections,),
+            ).fetchall()
+            records = [self._row_to_record(r) for r in rows]
+            records.sort(key=lambda r: getattr(r, metric), reverse=True)
+            return records[:n]
+
+    def health_check(
+        self,
+        threshold: float = 0.4,
+        min_selections: int = 5,
+    ) -> list[SkillHealth]:
+        """标 degraded = effective_rate < threshold AND selections >= min。
+
+        INVARIANT #12: selections < min → degraded=False（数据不足不判）。
+        """
+        results: list[SkillHealth] = []
+        for rec in self.list_active():
+            degraded = (
+                rec.total_selections >= min_selections
+                and rec.effective_rate < threshold
+            )
+            results.append(SkillHealth(
+                skill_id=rec.skill_id,
+                name=rec.name,
+                effective_rate=rec.effective_rate,
+                fallback_rate=rec.fallback_rate,
+                total_selections=rec.total_selections,
+                degraded=degraded,
+            ))
+        return results
 
     # ── helpers ──────────────────────────────────────────────
 
