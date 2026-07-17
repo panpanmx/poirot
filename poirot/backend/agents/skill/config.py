@@ -1,7 +1,7 @@
 """Skill 配置层 — .env 读取 + frozen dataclass。
 
 INVARIANT:
-- POIROT_SKILL_ENABLED=true（缺省）→ 启用 skill 模块
+- POIROT_SKILL_ENABLED 缺省 false（opt-in，与 MCP 一致）→ build_skill_manager 返 None，既有行为不影响
 - POIROT_SKILL_DB_PATH 缺省 .poirot/skills.db，相对项目根
 - POIROT_SKILL_DIRS 逗号分隔多个扫描目录，缺省 ("skills/",)
 - POIROT_SKILL_MAX_INJECT 缺省 3，单轮最多注入 skill 数
@@ -19,14 +19,14 @@ from dataclasses import dataclass
 class SkillConfig:
     """Skill 模块顶层配置。
 
-    enabled: 是否启用 skill 模块（false 时 build_skill_manager 返 None）
+    enabled: 是否启用 skill 模块（缺省 false，false 时 build_skill_manager 返 None）
     db_path: SQLite 路径（相对项目根）
     skill_dirs: skill 扫描目录元组
     max_inject: 单轮最多注入 skill 数
     quality_threshold: quality filter 淘汰阈值（effective_rate < threshold 且 selections >= min）
     min_selections: 淘汰判定最少 selections（anti-loop，给新 skill 数据积累机会）
     """
-    enabled: bool = True
+    enabled: bool = False
     db_path: str = ".poirot/skills.db"
     skill_dirs: tuple[str, ...] = ("skills/",)
     max_inject: int = 3
@@ -39,7 +39,7 @@ def load_skill_config() -> SkillConfig:
 
     int/float 转换失败时用默认值，不抛异常。
     """
-    enabled = os.environ.get("POIROT_SKILL_ENABLED", "true").lower() == "true"
+    enabled = os.environ.get("POIROT_SKILL_ENABLED", "false").lower() == "true"
     db_path = os.environ.get("POIROT_SKILL_DB_PATH", ".poirot/skills.db")
 
     dirs_raw = os.environ.get("POIROT_SKILL_DIRS", "")

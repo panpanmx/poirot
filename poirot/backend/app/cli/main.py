@@ -120,6 +120,7 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
     # 由 renderer 收到 budget_update 事件时回填（见 stream_handler._update_budget）
     cli_state: dict[str, Any] = {
         "pending_expert_mode": None,
+        "skill_override": [],
         "mode": "expert" if runtime.config.runtime.expert_mode else "default",
         "model": _resolve_actual_model_name(runtime.capability_registry),
         "current_tokens": 0,
@@ -261,6 +262,8 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
             )
             runtime.run_manager.mark_running(ctx.run_id)
             config = _build_stream_config(runtime, ctx)
+            # /skill override：cli_state → configurable，SkillInjectionMiddleware 读取
+            config["configurable"]["skill_override"] = cli_state.get("skill_override") or []
             client = PoirotStreamClient(graph=runtime.leader_agent.graph, config=config)
 
             # 注入 round 起始时间 + 模型名，供 _render_done 输出耗时尾行

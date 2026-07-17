@@ -168,6 +168,46 @@ def _cmd_prompt(ctx: CommandContext) -> None:
     ctx.console.print("[yellow]Usage: /prompt list | /prompt show <cat/name> | /prompt reload[/yellow]")
 
 
+def _cmd_skill(ctx: CommandContext) -> None:
+    """Skill 激活命令：/skill <name> | /skill off | /skill list。
+
+    持久 override（每轮生效，直到 /skill off）。设 cli_state["skill_override"]，
+    主循环注入 config["configurable"]["skill_override"]，SkillInjectionMiddleware 读取。
+    """
+    arg = ctx.arg.strip()
+    if arg == "list":
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        if mgr is None:
+            ctx.console.print("[dim]Skill module not enabled[/dim]")
+            return
+        skills = mgr.list_skills()
+        if not skills:
+            ctx.console.print("[dim]No skills registered[/dim]")
+            return
+        ctx.console.print("[bold]Active skills:[/bold]")
+        for s in skills:
+            tools = ",".join(s["allowed_tools"]) if s["allowed_tools"] else "-"
+            ctx.console.print(
+                f"  [cyan]{s['name']}[/cyan] eff={s['effective_rate']:.0%} "
+                f"sel={s['total_selections']} tools={tools}"
+            )
+        return
+    if arg == "off":
+        ctx.state["skill_override"] = []
+        ctx.console.print("[green]Skill override cleared[/green]")
+        return
+    if not arg:
+        cur = ctx.state.get("skill_override") or []
+        cur_label = ",".join(cur) if cur else "(none)"
+        ctx.console.print(
+            f"[yellow]Usage: /skill <name> | /skill off | /skill list"
+            f"  (current: {cur_label})[/yellow]"
+        )
+        return
+    ctx.state["skill_override"] = [arg]
+    ctx.console.print(f"[green]Skill '{arg}' activated[/green]")
+
+
 # ---- 模块级 registry：注册全部 builtin 命令 ----
 
 _registry = CommandRegistry()
@@ -184,6 +224,7 @@ _registry.register(CommandSpec("/tools", "List available tools", _cmd_tools))
 _registry.register(CommandSpec("/model", "Show current model routing chain", _cmd_model))
 _registry.register(CommandSpec("/thread", "Show thread info", _cmd_thread))
 _registry.register(CommandSpec("/prompt", "Prompt management (list|show <cat/name>|reload)", _cmd_prompt))
+_registry.register(CommandSpec("/skill", "Skill activation (list|<name>|off)", _cmd_skill))
 
 
 def get_registry() -> CommandRegistry:

@@ -15,6 +15,7 @@ class CapabilityRegistry:
     reporter: Any | None = None
     artifact_store: Any | None = None
     sandbox_provider: Any | None = None
+    skill_store: Any | None = None
 
     def get_model(self, name: str) -> Any:
         try:
@@ -42,3 +43,8 @@ class CapabilityRegistry:
         if self.sandbox_provider is None:
             raise CapabilityMissingError("sandbox_provider not registered")
         return self.sandbox_provider
+
+    def get_skill_store(self) -> Any:
+        if self.skill_store is None:
+            raise CapabilityMissingError("skill_store not registered")
+        return self.skill_store

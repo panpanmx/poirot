@@ -38,7 +38,7 @@ class TestSkillConfigDefaults:
 
     def test_default_values(self):
         cfg = SkillConfig()
-        assert cfg.enabled is True
+        assert cfg.enabled is False
         assert cfg.db_path == ".poirot/skills.db"
         assert cfg.skill_dirs == ("skills/",)
         assert cfg.max_inject == 3
@@ -71,7 +71,7 @@ class TestLoadSkillConfigNoEnv:
     def test_no_env_returns_defaults(self, monkeypatch):
         _clear_skill_env(monkeypatch)
         cfg = load_skill_config()
-        assert cfg.enabled is True
+        assert cfg.enabled is False
         assert cfg.db_path == ".poirot/skills.db"
         assert cfg.skill_dirs == ("skills/",)
         assert cfg.max_inject == 3

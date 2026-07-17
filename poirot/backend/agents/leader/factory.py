@@ -36,6 +36,8 @@ def _build_middlewares(
     sandbox_provider: Any = None,
     artifact_server: Any = None,
     mcp_audit_middleware: Any = None,
+    skill_injection_middleware: Any = None,
+    skill_metrics_middleware: Any = None,
 ) -> list:
     """全模式全挂 middleware，参数化控制行为差异。
 
@@ -45,8 +47,9 @@ def _build_middlewares(
         Report after_agent 自动合成。
 
     治理层（context_governance）挂载顺序见 builder.build_governance_middlewares。
-    挂载顺序：治理层（公共3 + StrategyMiddleware） → SystemContext → Title → RunJournal →
-    MCP Audit（条件挂）→ Sandbox（条件挂）→ LoopDetection → ToolCall → Evidence → Todo → Reflection → Report。
+    挂载顺序：治理层（公共3 + StrategyMiddleware） → SystemContext → SkillInjection（条件挂）
+    → SkillMetrics（条件挂）→ Title → RunJournal → MCP Audit（条件挂）→ Sandbox（条件挂）
+    → LoopDetection → ToolCall → Evidence → Todo → Reflection → Report。
     """
     middlewares: list = []
     if context_governance is not None:
@@ -57,6 +60,12 @@ def _build_middlewares(
         middlewares.extend(build_governance_middlewares(context_governance, model=model, summarize_model=summarize_model))
     middlewares.extend([
         SystemContextMiddleware(),
+    ])
+    if skill_injection_middleware is not None:
+        middlewares.append(skill_injection_middleware)
+    if skill_metrics_middleware is not None:
+        middlewares.append(skill_metrics_middleware)
+    middlewares.extend([
         TitleMiddleware(),
         RunJournalMiddleware(),
     ])
@@ -98,6 +107,8 @@ def make_lead_agent(
     sandbox_provider: Any = None,
     artifact_server: Any = None,
     mcp_audit_middleware: Any = None,
+    skill_injection_middleware: Any = None,
+    skill_metrics_middleware: Any = None,
 ) -> Any:
     """App-layer factory: expert_flag 参数化装配 graph。
 
@@ -150,7 +161,7 @@ def make_lead_agent(
         graph=create_agent(
             model=model,
             tools=tools or None,
-            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server, mcp_audit_middleware),
+            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server, mcp_audit_middleware, skill_injection_middleware, skill_metrics_middleware),
             system_prompt=apply_prompt_template(expert_mode=resolved_expert),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),

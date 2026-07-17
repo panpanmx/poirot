@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from poirot.backend.agents.sandbox.integration.config import SandboxConfig
+from poirot.backend.agents.skill.config import SkillConfig
 
 
 @dataclass(frozen=True)
@@ -70,3 +71,4 @@ class AppConfig:
     observability: ObservabilityConfig
     context_governance: ContextGovernanceConfig = field(default_factory=ContextGovernanceConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
+    skill: SkillConfig = field(default_factory=SkillConfig)

@@ -85,6 +85,7 @@ class AppRuntime:
     leader_agent: LeaderAgent
     mcp_manager: Any = None
     artifact_server: Any = None
+    skill_manager: Any = None
 
     def run_question(
         self,
@@ -139,6 +140,8 @@ class AppRuntime:
             sandbox_provider=getattr(self.capability_registry, "sandbox_provider", None),
             artifact_server=self.artifact_server,
             mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
+            skill_injection_middleware=self.skill_manager.get_injection_middleware() if self.skill_manager else None,
+            skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
         )
         self.thread_journal.append("mode.switched", {
             "expert_mode": expert_mode,
@@ -155,6 +158,7 @@ class AppRuntime:
             leader_agent=new_leader,
             mcp_manager=self.mcp_manager,
             artifact_server=self.artifact_server,
+            skill_manager=self.skill_manager,
         )
 
     def reload_mcp_tools(self) -> AppRuntime:
@@ -172,6 +176,8 @@ class AppRuntime:
             sandbox_provider=getattr(self.capability_registry, "sandbox_provider", None),
             artifact_server=self.artifact_server,
             mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
+            skill_injection_middleware=self.skill_manager.get_injection_middleware() if self.skill_manager else None,
+            skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
         )
         self.thread_journal.append("mcp.tools_reloaded", {"thread_id": self.thread_id})
         return AppRuntime(
@@ -185,6 +191,7 @@ class AppRuntime:
             leader_agent=new_leader,
             mcp_manager=self.mcp_manager,
             artifact_server=self.artifact_server,
+            skill_manager=self.skill_manager,
         )
 
 
@@ -338,6 +345,26 @@ def bootstrap_runtime(
         artifact_server = ArtifactServer()
         artifact_server.start()
 
+    # Skill 模块加载 — build_skill_manager 读 .env，enabled=false 或无目录返 None。
+    skill_manager = None
+    skill_injection_middleware = None
+    skill_metrics_middleware = None
+    try:
+        from poirot.backend.agents.skill import build_skill_manager
+
+        skill_manager = build_skill_manager()
+        if skill_manager is not None:
+            skill_manager.load_startup(llm=researcher_model)
+            skill_injection_middleware = skill_manager.get_injection_middleware()
+            skill_metrics_middleware = skill_manager.get_metrics_middleware()
+            thread_journal.append("skill.loaded", {
+                "skills": [s["name"] for s in skill_manager.list_skills()],
+            })
+        else:
+            thread_journal.append("skill.skipped", {"reason": "disabled or no skills dir"})
+    except Exception as exc:
+        thread_journal.append("skill.load_failed", {"error": str(exc)})
+
     all_tools = {**tools, **{t.name: t for t in sandbox_tools}}
     registry = CapabilityRegistry(
         models={"researcher": researcher_model, "reporter": reporter_model},
@@ -345,6 +372,7 @@ def bootstrap_runtime(
         reporter=MarkdownReporter(),
         artifact_store=LocalArtifactStore(),
         sandbox_provider=sandbox_provider,
+        skill_store=skill_manager.store if skill_manager else None,
     )
     leader_agent = make_lead_agent(
         expert_mode=expert_mode,
@@ -353,6 +381,8 @@ def bootstrap_runtime(
         sandbox_provider=sandbox_provider,
         artifact_server=artifact_server,
         mcp_audit_middleware=mcp_audit_middleware,
+        skill_injection_middleware=skill_injection_middleware,
+        skill_metrics_middleware=skill_metrics_middleware,
     )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,
@@ -371,4 +401,5 @@ def bootstrap_runtime(
         leader_agent=leader_agent,
         mcp_manager=mcp_manager,
         artifact_server=artifact_server,
+        skill_manager=skill_manager,
     )
