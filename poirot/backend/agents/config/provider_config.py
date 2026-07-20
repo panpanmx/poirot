@@ -29,7 +29,7 @@ MODEL_PROVIDERS = [
         "provider": "deepseek",
         "model": "deepseek-v4-flash",
         "api_key": os.environ.get("DEEPSEEK_API_KEY", ""),
-        "base_url": "https://api.deepseek.com",
+        "base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         "priority": 10,
         "default": True,
         "enabled": True,
@@ -38,7 +38,7 @@ MODEL_PROVIDERS = [
         "provider": "openai",
         "model": "gpt-4.1-mini",
         "api_key": os.environ.get("OPENAI_API_KEY", ""),
-        "base_url": None,
+        "base_url": os.environ.get("OPENAI_BASE_URL") or None,
         "priority": 20,
         "default": False,
         "enabled": True,
@@ -47,7 +47,7 @@ MODEL_PROVIDERS = [
         "provider": "qwen",
         "model": "qwen-plus",
         "api_key": os.environ.get("QWEN_API_KEY", ""),
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "base_url": os.environ.get("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         "priority": 30,
         "default": False,
         "enabled": True,
@@ -159,7 +159,10 @@ def build_chat_model(config: ProviderConfig):
         config.require_api_key()
     if config.provider == "deepseek":
         from langchain_deepseek import ChatDeepSeek
-        return ChatDeepSeek(model=config.model, api_key=config.api_key)
+        kwargs: dict = {"model": config.model, "api_key": config.api_key}
+        if config.base_url:
+            kwargs["api_base"] = config.base_url
+        return ChatDeepSeek(**kwargs)
     if config.provider in ("openai", "qwen"):
         from langchain_openai import ChatOpenAI
         kwargs: dict = {"model": config.model, "api_key": config.api_key}
