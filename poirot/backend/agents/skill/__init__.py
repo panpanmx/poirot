@@ -23,7 +23,11 @@ __all__ = [
 
 # 核心系统 skill 目录（随包提交，已验证）。与用户 skill（skills/，gitignore）同机制，
 # 均可经 frontmatter enabled:false 或 store 禁用。包相对路径，不依赖 cwd。
+# 只有 core/ 子目录在启动时 discover（元 skill 自动加载）；
+# 其余子目录（research/software-development/creative/productivity）的 skill 不自动加载，
+# 需通过 /skill search 命令或 find-skills skill 搜索后按需使用。
 _BUILTIN_SKILLS_DIR = Path(__file__).parent / "builtin_skills"
+_BUILTIN_CORE_SKILLS_DIR = _BUILTIN_SKILLS_DIR / "core"
 
 
 class SkillManager:
@@ -61,8 +65,8 @@ class SkillManager:
                 self._store.register(rec)
             except Exception:
                 pass
-        if self._config.include_builtin and _BUILTIN_SKILLS_DIR.exists():
-            for rec in self._store.discover([_BUILTIN_SKILLS_DIR], origin="BUILTIN"):
+        if self._config.include_builtin and _BUILTIN_CORE_SKILLS_DIR.exists():
+            for rec in self._store.discover([_BUILTIN_CORE_SKILLS_DIR], origin="BUILTIN"):
                 try:
                     self._store.register(rec)
                 except Exception:
@@ -113,6 +117,36 @@ class SkillManager:
                 "allowed_tools": list(rec.allowed_tools),
             })
         return result
+
+    def search_builtin_skills(self, query: str) -> list[dict]:
+        """搜索全部 builtin_skills/（含非 core 的未加载 skill）按关键词匹配。
+
+        core/ 下的 skill 启动时已 discover 为 active；其余子目录的 skill 仅存在于
+        文件系统，不进 DB。此方法扫全树找匹配 name/description 的 SKILL.md，返回
+        元数据供 /skill search 命令或 find-skills skill 使用。
+        """
+        from poirot.backend.agents.skill.parser import parse_skill_file
+
+        if not _BUILTIN_SKILLS_DIR.exists():
+            return []
+        query_lower = query.lower()
+        results: list[dict] = []
+        for skill_md in sorted(_BUILTIN_SKILLS_DIR.rglob("SKILL.md")):
+            try:
+                rec = parse_skill_file(skill_md, origin="BUILTIN")
+            except Exception:
+                continue
+            # 匹配 name 或 description
+            if query_lower in rec.name.lower() or query_lower in rec.description.lower():
+                category = skill_md.parent.parent.name  # core/research/...
+                results.append({
+                    "name": rec.name,
+                    "description": rec.description,
+                    "category": category,
+                    "path": str(skill_md),
+                    "is_active": rec.name in {r["name"] for r in self.list_skills()},
+                })
+        return results
 
 
 def build_skill_manager() -> SkillManager | None:

@@ -215,6 +215,27 @@ def _cmd_skill(ctx: CommandContext) -> None:
                 f"sel={s['total_selections']} tools={tools}"
             )
         return
+    if arg.startswith("search "):
+        query = arg[7:].strip()
+        if not query:
+            ctx.console.print("[yellow]Usage: /skill search <query>[/yellow]")
+            return
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        if mgr is None:
+            ctx.console.print("[dim]Skill module not enabled[/dim]")
+            return
+        results = mgr.search_builtin_skills(query)
+        if not results:
+            ctx.console.print(f"[dim]No builtin skills matching '{query}'[/dim]")
+            return
+        ctx.console.print(f"[bold]Builtin skills matching '{query}':[/bold]")
+        for r in results:
+            status = "[green]active[/green]" if r["is_active"] else "[dim]on-demand[/dim]"
+            ctx.console.print(
+                f"  [cyan]{r['name']}[/cyan] ({r['category']}) {status}"
+                f"\n    {r['description']}"
+            )
+        return
     if arg == "off":
         ctx.state["skill_override"] = []
         ctx.console.print("[green]Skill override cleared (skill still enabled, agent may auto-select)[/green]")
@@ -338,7 +359,7 @@ def _cmd_skill(ctx: CommandContext) -> None:
         cur = ctx.state.get("skill_override") or []
         cur_label = ",".join(cur) if cur else "(none)"
         ctx.console.print(
-            f"[yellow]Usage: /skill <name> | /skill off (clear override) | "
+            f"[yellow]Usage: /skill <name> | /skill search <query> | /skill off (clear override) | "
             f"/skill enable <name> | /skill disable <name> | /skill install <path> [name] | "
             f"/skill evolve <name> | /skill capture <pattern> <name> | /skill history <name> | /skill list"
             f"  (current override: {cur_label})[/yellow]"
@@ -396,7 +417,7 @@ _registry.register(CommandSpec("/tools", "List available tools", _cmd_tools))
 _registry.register(CommandSpec("/model", "Show or switch model (<provider> [model]); applies next round", _cmd_model))
 _registry.register(CommandSpec("/thread", "Show thread info", _cmd_thread))
 _registry.register(CommandSpec("/prompt", "Prompt management (list|show <cat/name>|reload)", _cmd_prompt))
-_registry.register(CommandSpec("/skill", "Skill control (list|<name>|off|enable|disable|install|evolve|capture|history)", _cmd_skill))
+_registry.register(CommandSpec("/skill", "Skill control (list|search|<name>|off|enable|disable|install|evolve|capture|history)", _cmd_skill))
 _registry.register(CommandSpec("/mcp", "MCP control (list|reload)", _cmd_mcp))
 
 
