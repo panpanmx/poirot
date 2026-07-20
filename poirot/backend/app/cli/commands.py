@@ -93,12 +93,33 @@ def _cmd_tools(ctx: CommandContext) -> None:
 
 
 def _cmd_model(ctx: CommandContext) -> None:
+    arg = ctx.arg.strip()
+    # 无参：显示当前路由链
+    if not arg:
+        try:
+            from poirot.backend.agents.leader.agent import _resolve_actual_model_name
+            name = _resolve_actual_model_name(ctx.runtime.capability_registry)
+            ctx.console.print(f"[bold]Model routing:[/bold] [cyan]{name}[/cyan]")
+        except Exception as exc:
+            ctx.console.print(f"[red]Failed to get model info: {exc}[/red]")
+        return
+
+    # 有参：<provider> [model] —— 设 pending_model_switch，主循环检测后调 runtime.switch_model
+    parts = arg.split(maxsplit=1)
+    provider = parts[0]
+    model = parts[1].strip() if len(parts) > 1 else None
     try:
-        from poirot.backend.agents.leader.agent import _resolve_actual_model_name
-        name = _resolve_actual_model_name(ctx.runtime.capability_registry)
-        ctx.console.print(f"[bold]Model routing:[/bold] [cyan]{name}[/cyan]")
+        from poirot.backend.agents.config.provider_config import get_provider_config
+        cfg = get_provider_config(provider)
     except Exception as exc:
-        ctx.console.print(f"[red]Failed to get model info: {exc}[/red]")
+        ctx.console.print(f"[red]Unknown provider '{provider}': {exc}[/red]")
+        return
+    if cfg.provider not in ("fake",) and not cfg.api_key:
+        ctx.console.print(f"[red]Provider '{provider}' has no API key in .env (set {provider.upper()}_API_KEY)[/red]")
+        return
+    model_label = model or cfg.model
+    ctx.state["pending_model_switch"] = (provider, model)
+    ctx.console.print(f"[green]Model will switch to {provider}/{model_label} next round[/green]")
 
 
 def _cmd_thread(ctx: CommandContext) -> None:
@@ -372,7 +393,7 @@ _registry.register(CommandSpec("/quit", "Exit (alias of /exit)", _cmd_exit))
 _registry.register(CommandSpec("/expand", "Expand last round tool results and Thought", _cmd_expand))
 _registry.register(CommandSpec("/thinking", "Toggle Thought fold row display (on|off)", _cmd_thinking))
 _registry.register(CommandSpec("/tools", "List available tools", _cmd_tools))
-_registry.register(CommandSpec("/model", "Show current model routing chain", _cmd_model))
+_registry.register(CommandSpec("/model", "Show or switch model (<provider> [model]); applies next round", _cmd_model))
 _registry.register(CommandSpec("/thread", "Show thread info", _cmd_thread))
 _registry.register(CommandSpec("/prompt", "Prompt management (list|show <cat/name>|reload)", _cmd_prompt))
 _registry.register(CommandSpec("/skill", "Skill control (list|<name>|off|enable|disable|install|evolve|capture|history)", _cmd_skill))

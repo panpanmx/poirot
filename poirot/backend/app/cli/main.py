@@ -257,6 +257,19 @@ async def _run_chat_async(runtime: AppRuntime, provider: str | None, model: str 
                 cli_state["pending_mcp_reload"] = None
                 runtime = runtime.reload_mcp_tools()
                 console.print("[green]MCP tools reloaded[/green]\n")
+
+            # /model <provider> [model] 命令：热切换 LLM（重建 model+registry+leader_agent，保留 thread）
+            pending_model = cli_state.get("pending_model_switch")
+            if pending_model is not None:
+                cli_state["pending_model_switch"] = None
+                provider, model = pending_model
+                try:
+                    runtime = runtime.switch_model(provider=provider, model=model)
+                    cli_state["model"] = _resolve_actual_model_name(runtime.capability_registry)
+                    _print_status()
+                    console.print(f"[green]Switched to {provider}/{model or 'default'}[/green]\n")
+                except Exception as exc:
+                    console.print(f"[red]Model switch failed: {exc}[/red]\n")
             continue
 
         # 用户输入卡片化回显（/命令不套卡片——它们是系统操作，不是对话）

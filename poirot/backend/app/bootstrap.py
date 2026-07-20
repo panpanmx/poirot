@@ -194,6 +194,60 @@ class AppRuntime:
             skill_manager=self.skill_manager,
         )
 
+    def switch_model(self, provider: str, model: str | None = None) -> AppRuntime:
+        """热切换 LLM provider/model。重建 researcher+reporter model + capability_registry
+        + leader_agent，保留 thread_id / thread_dir / thread_journal / mcp_manager /
+        artifact_server / skill_manager / sandbox_provider（checkpointer state 跨切换连续）。
+
+        等价于 CLI ``--provider X --model Y`` 重启，但不丢 thread。同 ``switch_expert_mode``
+        不可变语义——返回新 AppRuntime，CLI 用 runtime = runtime.switch_model(...)。
+
+        provider 必须是 MODEL_PROVIDERS 里 enabled 的项；model=None 用 provider 默认 model。
+        单 provider 模式（不走 FallbackChatModel 路由链），reporter = researcher。
+        """
+        from poirot.backend.agents.config.model_router import ModelRouter
+
+        router = ModelRouter()
+        new_model = router.build_single(provider, model)  # 校验 provider + api_key，失败抛 ProviderConfigError
+        new_reporter = new_model
+        new_registry = CapabilityRegistry(
+            models={"researcher": new_model, "reporter": new_reporter},
+            tools=self.capability_registry.tools,
+            reporter=self.capability_registry.reporter,
+            artifact_store=self.capability_registry.artifact_store,
+            sandbox_provider=self.capability_registry.sandbox_provider,
+            skill_store=self.capability_registry.skill_store,
+        )
+        expert_mode = self.config.runtime.expert_mode
+        new_leader = make_lead_agent(
+            expert_mode=expert_mode,
+            capability_registry=new_registry,
+            context_governance=self.config.context_governance,
+            sandbox_provider=getattr(new_registry, "sandbox_provider", None),
+            artifact_server=self.artifact_server,
+            mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
+            skill_injection_middleware=self.skill_manager.get_injection_middleware() if self.skill_manager else None,
+            skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
+        )
+        self.thread_journal.append("model.switched", {
+            "provider": provider,
+            "model": model or "default",
+            "thread_id": self.thread_id,
+        })
+        return AppRuntime(
+            config=self.config,
+            capability_registry=new_registry,
+            run_manager=self.run_manager,
+            researcher_model_name=model or provider,
+            thread_id=self.thread_id,
+            thread_dir=self.thread_dir,
+            thread_journal=self.thread_journal,
+            leader_agent=new_leader,
+            mcp_manager=self.mcp_manager,
+            artifact_server=self.artifact_server,
+            skill_manager=self.skill_manager,
+        )
+
 
 def _load_sandbox_provider(config: AppConfig) -> Any:
     """反射加载 sandbox provider。config.sandbox.use 为空则返 None（Grill #9）。"""
