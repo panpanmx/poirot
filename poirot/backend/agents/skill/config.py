@@ -33,6 +33,13 @@ class SkillConfig:
     max_inject: int = 3
     quality_threshold: float = 0.3
     min_selections: int = 5
+    # 自进化（Layer 2a，默认 false opt-in）
+    evolve_enabled: bool = False
+    evolve_threshold: float = 0.3
+    evolve_min_selections: int = 5
+    evolve_cooldown_turns: int = 10
+    evolve_mutate_budget: int = 20
+    evolve_max_steps: int = 5
 
 
 def load_skill_config() -> SkillConfig:
@@ -43,6 +50,7 @@ def load_skill_config() -> SkillConfig:
     enabled = os.environ.get("POIROT_SKILL_ENABLED", "false").lower() == "true"
     db_path = os.environ.get("POIROT_SKILL_DB_PATH", ".poirot/skills.db")
     include_builtin = os.environ.get("POIROT_SKILL_INCLUDE_BUILTIN", "true").lower() == "true"
+    evolve_enabled = os.environ.get("POIROT_SKILL_EVOLVE_ENABLED", "false").lower() == "true"
 
     dirs_raw = os.environ.get("POIROT_SKILL_DIRS", "")
     if dirs_raw:
@@ -65,6 +73,31 @@ def load_skill_config() -> SkillConfig:
     except (ValueError, TypeError):
         min_selections = 5
 
+    try:
+        evolve_threshold = float(os.environ.get("POIROT_SKILL_EVOLVE_THRESHOLD", "0.3"))
+    except (ValueError, TypeError):
+        evolve_threshold = 0.3
+
+    try:
+        evolve_min_selections = int(os.environ.get("POIROT_SKILL_EVOLVE_MIN_SELECTIONS", "5"))
+    except (ValueError, TypeError):
+        evolve_min_selections = 5
+
+    try:
+        evolve_cooldown_turns = int(os.environ.get("POIROT_SKILL_EVOLVE_COOLDOWN_TURNS", "10"))
+    except (ValueError, TypeError):
+        evolve_cooldown_turns = 10
+
+    try:
+        evolve_mutate_budget = int(os.environ.get("POIROT_SKILL_EVOLVE_MUTATE_BUDGET", "20"))
+    except (ValueError, TypeError):
+        evolve_mutate_budget = 20
+
+    try:
+        evolve_max_steps = int(os.environ.get("POIROT_SKILL_EVOLVE_MAX_STEPS", "5"))
+    except (ValueError, TypeError):
+        evolve_max_steps = 5
+
     return SkillConfig(
         enabled=enabled,
         db_path=db_path,
@@ -73,4 +106,10 @@ def load_skill_config() -> SkillConfig:
         max_inject=max_inject,
         quality_threshold=quality_threshold,
         min_selections=min_selections,
+        evolve_enabled=evolve_enabled,
+        evolve_threshold=evolve_threshold,
+        evolve_min_selections=evolve_min_selections,
+        evolve_cooldown_turns=evolve_cooldown_turns,
+        evolve_mutate_budget=evolve_mutate_budget,
+        evolve_max_steps=evolve_max_steps,
     )

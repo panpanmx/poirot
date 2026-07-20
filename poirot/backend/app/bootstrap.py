@@ -224,6 +224,47 @@ def _build_path_mappings(sandbox_config: Any) -> list:
     return mappings
 
 
+def _build_evolution_manager(skill_manager: Any, llm: Any, journal: Any) -> Any:
+    """建 EvolutionManager（Layer 2a）注入 SkillManager。
+
+    lazy import evolution 模块（避免 skill → evolution → skill 循环）。
+    """
+    from poirot.backend.agents.skill.evolution.focus.ive_focuser import IVEFocuser
+    from poirot.backend.agents.skill.evolution.eval.programmatic_bridge import (
+        ProgrammaticEvalBridge,
+    )
+    from poirot.backend.agents.skill.evolution.gates.score_delta_gate import ScoreDeltaGate
+    from poirot.backend.agents.skill.evolution.manager import EvolutionManager
+    from poirot.backend.agents.skill.evolution.mutators.llm_mutator import LLMMutator
+    from poirot.backend.agents.skill.evolution.triggers.capture_trigger import (
+        CaptureTrigger,
+    )
+    from poirot.backend.agents.skill.evolution.triggers.metric_monitor import (
+        MetricMonitorTrigger,
+    )
+
+    cfg = skill_manager.config
+    triggers = [
+        MetricMonitorTrigger(
+            threshold=cfg.evolve_threshold,
+            min_selections=cfg.evolve_min_selections,
+            cooldown_turns=cfg.evolve_cooldown_turns,
+            llm=llm,
+        ),
+        CaptureTrigger(),
+    ]
+    return EvolutionManager(
+        store=skill_manager.store,
+        triggers=triggers,
+        focuser=IVEFocuser(llm=llm),
+        mutator=LLMMutator(max_changed_lines=cfg.evolve_mutate_budget, max_steps=cfg.evolve_max_steps, llm=llm),
+        eval_bridge=ProgrammaticEvalBridge(),
+        gate=ScoreDeltaGate(),
+        llm=llm,
+        journal=journal,
+    )
+
+
 def bootstrap_runtime(
     expert_mode: bool = False,
     provider: str | None = None,
@@ -360,6 +401,15 @@ def bootstrap_runtime(
             thread_journal.append("skill.loaded", {
                 "skills": [s["name"] for s in skill_manager.list_skills()],
             })
+            # 自进化装配（Layer 2a）：evolve_enabled=true 时建 EvolutionManager 注入
+            if skill_manager.config.evolve_enabled:
+                try:
+                    skill_manager.set_evolution_manager(
+                        _build_evolution_manager(skill_manager, researcher_model, thread_journal)
+                    )
+                    thread_journal.append("skill.evolve_loaded", {})
+                except Exception as exc:
+                    thread_journal.append("skill.evolve_load_failed", {"error": str(exc)})
         else:
             thread_journal.append("skill.skipped", {"reason": "disabled or no skills dir"})
     except Exception as exc:

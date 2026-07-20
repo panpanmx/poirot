@@ -43,6 +43,15 @@ class SkillManager:
         self._selector: SkillSelector | None = None
         self._injection: Any = None
         self._metrics: Any = None
+        self._evolution: Any = None  # EvolutionManager，由 bootstrap 装配（避免循环依赖）
+
+    def get_evolution_manager(self) -> Any:
+        """返 EvolutionManager（未装配时 None）。"""
+        return self._evolution
+
+    def set_evolution_manager(self, manager: Any) -> None:
+        """bootstrap 装配 EvolutionManager 注入。"""
+        self._evolution = manager
 
     def load_startup(self, llm: Any | None = None) -> None:
         """discover skill_dirs（用户 IMPORTED）+ builtin_skills（核心 BUILTIN）+ sync + 建 middleware。"""
@@ -85,6 +94,11 @@ class SkillManager:
     @property
     def store(self) -> SkillStore:
         return self._store
+
+    @property
+    def config(self) -> SkillConfig:
+        """暴露 config 供 bootstrap 访问 evolve 参数。"""
+        return self._config
 
     def list_skills(self) -> list[dict]:
         """返回 active skills 概览（供 TUI/CLI 展示）。"""

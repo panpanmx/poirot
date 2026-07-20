@@ -15,7 +15,7 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from poirot.backend.agents.journal.events import utc_now_iso
 from poirot.backend.agents.skill.types import (
@@ -25,7 +25,10 @@ from poirot.backend.agents.skill.types import (
     SkillRecord,
 )
 
-_SCHEMA_VERSION = 1
+if TYPE_CHECKING:
+    from poirot.backend.agents.skill.evolution.types import EvolutionRecord
+
+_SCHEMA_VERSION = 2
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS skill_records (
@@ -67,7 +70,47 @@ CREATE TABLE IF NOT EXISTS skill_judgments (
 );
 CREATE INDEX IF NOT EXISTS idx_sj_skill ON skill_judgments(skill_id);
 CREATE INDEX IF NOT EXISTS idx_sj_run   ON skill_judgments(run_id);
+
+CREATE TABLE IF NOT EXISTS skill_evolutions (
+    evolution_id        TEXT PRIMARY KEY,
+    skill_name          TEXT NOT NULL,
+    evolution_type      TEXT NOT NULL,
+    trigger             TEXT NOT NULL,
+    baseline_id         TEXT,
+    candidate_id        TEXT NOT NULL,
+    failure_focus       TEXT NOT NULL DEFAULT '',
+    mutation_diff       TEXT NOT NULL DEFAULT '',
+    eval_score          REAL NOT NULL DEFAULT 0.0,
+    gate_decision       TEXT NOT NULL,
+    created_version_id  TEXT,
+    timestamp           TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_se_skill ON skill_evolutions(skill_name, timestamp);
 """
+
+
+def _migrate_v1_v2(conn: Any) -> None:
+    """v1→v2: 加 skill_evolutions 表（Layer 2 实验记录）。
+
+    _SCHEMA_SQL 已含此表（IF NOT EXISTS 幂等），此函数确保存量 v1 DB 升级时建表。
+    """
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS skill_evolutions (
+        evolution_id        TEXT PRIMARY KEY,
+        skill_name          TEXT NOT NULL,
+        evolution_type      TEXT NOT NULL,
+        trigger             TEXT NOT NULL,
+        baseline_id         TEXT,
+        candidate_id        TEXT NOT NULL,
+        failure_focus       TEXT NOT NULL DEFAULT '',
+        mutation_diff       TEXT NOT NULL DEFAULT '',
+        eval_score          REAL NOT NULL DEFAULT 0.0,
+        gate_decision       TEXT NOT NULL,
+        created_version_id  TEXT,
+        timestamp           TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_se_skill ON skill_evolutions(skill_name, timestamp);
+    """)
 
 
 class SkillStore(Protocol):
@@ -116,6 +159,12 @@ class SkillStore(Protocol):
         min_selections: int = 5,
     ) -> list[SkillHealth]: ...
 
+    # evolution 实验记录（Layer 2 写，本层持久化；record duck-type，history 返 dict 供 L2 包装）
+    def record_evolution(self, record: "EvolutionRecord") -> str: ...
+    def get_evolution_history(
+        self, skill_name: str, limit: int = 20,
+    ) -> list[dict[str, Any]]: ...
+
 
 class SQLiteSkillStore:
     """skill 基础层存储。SQLite + WAL + version DAG + 4 计数器打点。
@@ -153,11 +202,11 @@ class SQLiteSkillStore:
     def _migrate(self, from_v: int, to_v: int) -> None:
         """schema 版本链迁移。from_v → from_v+1 → ... → to_v。
 
-        当前 _SCHEMA_VERSION=1，executescript 已建初始表，无历史迁移步骤。
+        v1→v2: 加 skill_evolutions 表（Layer 2 实验记录）。
         新增版本时在 migrations 注册 (v, v+1) 迁移函数。
         """
         migrations: dict[tuple[int, int], Any] = {
-            # (0, 1): 初始 schema（executescript 已完成，无需额外操作）
+            (1, 2): _migrate_v1_v2,
         }
         v = from_v
         while v < to_v:
@@ -493,6 +542,53 @@ class SQLiteSkillStore:
                 degraded=degraded,
             ))
         return results
+
+    # ── evolution 实验记录（Layer 2 写，本层持久化）──────────
+
+    def record_evolution(self, record: "EvolutionRecord") -> str:
+        """写 skill_evolutions 表。record duck-type（EvolutionRecord 实例，L1 不 runtime import L2）。
+
+        INSERT OR REPLACE（同 evolution_id 重写）。持锁。
+        """
+        with self._mu:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO skill_evolutions
+                   (evolution_id, skill_name, evolution_type, trigger, baseline_id,
+                    candidate_id, failure_focus, mutation_diff, eval_score,
+                    gate_decision, created_version_id, timestamp)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    record.evolution_id,
+                    record.skill_name,
+                    record.evolution_type,
+                    record.trigger,
+                    record.baseline_id,
+                    record.candidate_id,
+                    record.failure_focus,
+                    record.mutation_diff,
+                    record.eval_score,
+                    record.gate_decision,
+                    record.created_version_id,
+                    record.timestamp or utc_now_iso(),
+                ),
+            )
+            self._conn.commit()
+            return record.evolution_id
+
+    def get_evolution_history(
+        self, skill_name: str, limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """回溯 skill 的 evolution 历史。返 list[dict]（L2 包装为 EvolutionRecord）。
+
+        按 timestamp 降序（最新在前），limit 截断。
+        """
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT * FROM skill_evolutions WHERE skill_name=? "
+                "ORDER BY timestamp DESC LIMIT ?",
+                (skill_name, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ── helpers ──────────────────────────────────────────────
 

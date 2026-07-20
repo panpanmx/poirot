@@ -220,6 +220,72 @@ def _cmd_skill(ctx: CommandContext) -> None:
         else:
             ctx.console.print(f"[red]Skill not found: {name}[/red]")
         return
+    # evolve <name>：手动 FIX 进化
+    if parts and parts[0] == "evolve":
+        if len(parts) < 2 or not parts[1].strip():
+            ctx.console.print("[yellow]Usage: /skill evolve <name>[/yellow]")
+            return
+        name = parts[1].strip()
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        evo = mgr.get_evolution_manager() if mgr else None
+        if evo is None:
+            ctx.console.print("[dim]Skill evolution not enabled (POIROT_SKILL_EVOLVE_ENABLED=true)[/dim]")
+            return
+        try:
+            rec = evo.evolve_skill(name)
+            ctx.console.print(
+                f"[green]Evolved '{name}'[/green] type={rec.evolution_type} "
+                f"score={rec.eval_score:.2f} decision={rec.gate_decision}"
+            )
+        except ValueError as exc:
+            ctx.console.print(f"[red]{exc}[/red]")
+        except Exception as exc:
+            ctx.console.print(f"[red]Evolve failed: {exc}[/red]")
+        return
+    # capture <pattern> <name>：手动 CAPTURED 沉淀新 skill
+    if parts and parts[0] == "capture":
+        rest = parts[1].strip() if len(parts) > 1 else ""
+        cap_parts = rest.split(maxsplit=1)
+        if len(cap_parts) < 2:
+            ctx.console.print("[yellow]Usage: /skill capture <pattern> <name>[/yellow]")
+            return
+        pattern, cap_name = cap_parts[0], cap_parts[1].strip()
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        evo = mgr.get_evolution_manager() if mgr else None
+        if evo is None:
+            ctx.console.print("[dim]Skill evolution not enabled (POIROT_SKILL_EVOLVE_ENABLED=true)[/dim]")
+            return
+        try:
+            rec = evo.capture_skill(pattern, cap_name)
+            ctx.console.print(
+                f"[green]Captured '{cap_name}'[/green] score={rec.eval_score:.2f} "
+                f"decision={rec.gate_decision}"
+            )
+        except Exception as exc:
+            ctx.console.print(f"[red]Capture failed: {exc}[/red]")
+        return
+    # history <name>：查看 evolution 历史
+    if parts and parts[0] == "history":
+        if len(parts) < 2 or not parts[1].strip():
+            ctx.console.print("[yellow]Usage: /skill history <name>[/yellow]")
+            return
+        name = parts[1].strip()
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        if mgr is None:
+            ctx.console.print("[dim]Skill module not enabled[/dim]")
+            return
+        history = mgr.store.get_evolution_history(name)
+        if not history:
+            ctx.console.print(f"[dim]No evolution history for '{name}'[/dim]")
+            return
+        ctx.console.print(f"[bold]Evolution history for '{name}':[/bold]")
+        for row in history:
+            ctx.console.print(
+                f"  [{row['gate_decision']}] type={row['evolution_type']} "
+                f"trigger={row['trigger']} score={row['eval_score']:.2f} "
+                f"ts={row['timestamp']}"
+            )
+        return
     # install <path> [name]：parser.install 拷到 skills/ + re-discover
     if parts and parts[0] == "install":
         rest = parts[1].strip() if len(parts) > 1 else ""
@@ -252,7 +318,8 @@ def _cmd_skill(ctx: CommandContext) -> None:
         cur_label = ",".join(cur) if cur else "(none)"
         ctx.console.print(
             f"[yellow]Usage: /skill <name> | /skill off (clear override) | "
-            f"/skill enable <name> | /skill disable <name> | /skill install <path> [name] | /skill list"
+            f"/skill enable <name> | /skill disable <name> | /skill install <path> [name] | "
+            f"/skill evolve <name> | /skill capture <pattern> <name> | /skill history <name> | /skill list"
             f"  (current override: {cur_label})[/yellow]"
         )
         return
@@ -308,7 +375,7 @@ _registry.register(CommandSpec("/tools", "List available tools", _cmd_tools))
 _registry.register(CommandSpec("/model", "Show current model routing chain", _cmd_model))
 _registry.register(CommandSpec("/thread", "Show thread info", _cmd_thread))
 _registry.register(CommandSpec("/prompt", "Prompt management (list|show <cat/name>|reload)", _cmd_prompt))
-_registry.register(CommandSpec("/skill", "Skill control (list|<name>|off|enable <name>|disable <name>|install <path> [name])", _cmd_skill))
+_registry.register(CommandSpec("/skill", "Skill control (list|<name>|off|enable|disable|install|evolve|capture|history)", _cmd_skill))
 _registry.register(CommandSpec("/mcp", "MCP control (list|reload)", _cmd_mcp))
 
 
