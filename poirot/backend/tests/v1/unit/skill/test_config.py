@@ -12,10 +12,15 @@
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 
 import pytest
 
-from poirot.backend.agents.skill.config import SkillConfig, load_skill_config
+from poirot.backend.agents.skill.config import (
+    SkillConfig,
+    _anchor,
+    load_skill_config,
+)
 
 # 所有 POIROT_SKILL_* 环境变量名
 _SKILL_ENV_KEYS = [
@@ -72,8 +77,11 @@ class TestLoadSkillConfigNoEnv:
         _clear_skill_env(monkeypatch)
         cfg = load_skill_config()
         assert cfg.enabled is False
-        assert cfg.db_path == ".poirot/skills.db"
-        assert cfg.skill_dirs == ("skills/",)
+        # load_skill_config 锚定相对路径到项目根（CWD 无关），dataclass 默认值仍相对
+        assert cfg.db_path == _anchor(".poirot/skills.db")
+        assert Path(cfg.db_path).is_absolute()
+        assert cfg.skill_dirs == (_anchor("skills"),)
+        assert all(Path(d).is_absolute() for d in cfg.skill_dirs)
         assert cfg.max_inject == 3
         assert cfg.quality_threshold == pytest.approx(0.3)
         assert cfg.min_selections == 5
@@ -108,19 +116,27 @@ class TestLoadSkillConfigDirs:
         _clear_skill_env(monkeypatch)
         monkeypatch.setenv("POIROT_SKILL_DIRS", "a,b")
         cfg = load_skill_config()
-        assert cfg.skill_dirs == ("a", "b")
+        assert cfg.skill_dirs == (_anchor("a"), _anchor("b"))
 
     def test_dirs_with_spaces_stripped(self, monkeypatch):
         _clear_skill_env(monkeypatch)
         monkeypatch.setenv("POIROT_SKILL_DIRS", " a , b , c ")
         cfg = load_skill_config()
-        assert cfg.skill_dirs == ("a", "b", "c")
+        assert cfg.skill_dirs == (_anchor("a"), _anchor("b"), _anchor("c"))
 
     def test_dirs_empty_falls_back_default(self, monkeypatch):
         _clear_skill_env(monkeypatch)
         monkeypatch.setenv("POIROT_SKILL_DIRS", "")
         cfg = load_skill_config()
-        assert cfg.skill_dirs == ("skills/",)
+        assert cfg.skill_dirs == (_anchor("skills"),)
+
+    def test_dirs_absolute_passthrough(self, monkeypatch):
+        """绝对路径原样返回，不重新锚定。"""
+        _clear_skill_env(monkeypatch)
+        abs_dir = str(Path(__file__).parent / "fixtures")
+        monkeypatch.setenv("POIROT_SKILL_DIRS", abs_dir)
+        cfg = load_skill_config()
+        assert cfg.skill_dirs == (abs_dir,)
 
 
 class TestLoadSkillConfigMaxInject:
@@ -178,4 +194,5 @@ class TestLoadSkillConfigDbPath:
         _clear_skill_env(monkeypatch)
         monkeypatch.setenv("POIROT_SKILL_DB_PATH", "custom/skills.db")
         cfg = load_skill_config()
-        assert cfg.db_path == "custom/skills.db"
+        assert cfg.db_path == _anchor("custom/skills.db")
+        assert Path(cfg.db_path).is_absolute()

@@ -13,6 +13,20 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+# 项目根——config.py 位于 poirot/backend/agents/skill/，parents[4] 即项目根。
+# db_path / skill_dirs 默认相对路径，锚定到项目根后 CWD 无关，避免从非项目根
+# 启动时 skill 模块因找不到 skills/ 目录或 .env 被误跳过（与 logs_root 同款处理）。
+_PROJECT_ROOT = Path(__file__).parents[4]
+
+
+def _anchor(path: str) -> str:
+    """相对路径锚到项目根；绝对路径原样返回。"""
+    p = Path(path)
+    if p.is_absolute():
+        return path
+    return str((_PROJECT_ROOT / p).resolve())
 
 
 @dataclass(frozen=True)
@@ -48,15 +62,15 @@ def load_skill_config() -> SkillConfig:
     int/float 转换失败时用默认值，不抛异常。
     """
     enabled = os.environ.get("POIROT_SKILL_ENABLED", "false").lower() == "true"
-    db_path = os.environ.get("POIROT_SKILL_DB_PATH", ".poirot/skills.db")
+    db_path = _anchor(os.environ.get("POIROT_SKILL_DB_PATH", ".poirot/skills.db"))
     include_builtin = os.environ.get("POIROT_SKILL_INCLUDE_BUILTIN", "true").lower() == "true"
     evolve_enabled = os.environ.get("POIROT_SKILL_EVOLVE_ENABLED", "false").lower() == "true"
 
     dirs_raw = os.environ.get("POIROT_SKILL_DIRS", "")
     if dirs_raw:
-        skill_dirs = tuple(d.strip() for d in dirs_raw.split(",") if d.strip())
+        skill_dirs = tuple(_anchor(d.strip()) for d in dirs_raw.split(",") if d.strip())
     else:
-        skill_dirs = ("skills/",)
+        skill_dirs = (_anchor("skills"),)
 
     try:
         max_inject = int(os.environ.get("POIROT_SKILL_MAX_INJECT", "3"))

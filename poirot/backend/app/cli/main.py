@@ -3,11 +3,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 from typing import Any, Sequence
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# 显式从项目根加载 .env——load_dotenv() 默认只查 CWD，从非项目根启动时
+# POIROT_SKILL_* 等配置不进 env（CWD-relative），导致 skill 模块被误跳过。
+# main.py 位于 poirot/backend/app/cli/，parents[4] 即项目根。
+_PROJECT_ROOT = Path(__file__).parents[4]
+load_dotenv(_PROJECT_ROOT / ".env")
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
