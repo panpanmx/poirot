@@ -102,7 +102,7 @@ def test_hard_budget_per_run_not_cumulative() -> None:
     before_agent 记 errors 基线，硬预算 = len(errors) - baseline >= 30。
     跨 run 的 errors 不计入当前 run 预算。
     """
-    mw = ToolCallMiddleware()
+    mw = ToolCallMiddleware(retry_budget=5, hard_budget=30)
     # 模拟前一个 run 累积了 25 条 errors
     state_with_history = {"errors": [{"tool_name": "web_search", "attempt": 1, "kind": "failure"} for _ in range(25)]}
     # before_agent 记基线 = 25
@@ -124,7 +124,7 @@ def test_hard_budget_per_run_not_cumulative() -> None:
 
 def test_hard_budget_triggers_within_run() -> None:
     """per-run 工具调用达 30 次 → 触发硬预算短路。"""
-    mw = ToolCallMiddleware()
+    mw = ToolCallMiddleware(retry_budget=5, hard_budget=30)
     # before_agent 记基线 = 0（空 errors）
     mw.before_agent({"errors": []}, _runtime())
 
@@ -143,7 +143,7 @@ def test_hard_budget_triggers_within_run() -> None:
 
 def test_retry_budget_resets_per_run() -> None:
     """retry_budget 应 per-run 计数——上 run 的 attempt=3 不阻塞当前 run。"""
-    mw = ToolCallMiddleware()
+    mw = ToolCallMiddleware(retry_budget=3, hard_budget=30)
     # run 1: 3 次失败 → errors 累积 3 条 attempt=3
     run1_errors = [
         {"tool_name": "web_search", "attempt": 1, "kind": "failure"},

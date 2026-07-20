@@ -23,8 +23,8 @@ from langgraph.types import Command
 from poirot.backend.agents.middlewares.run_journal_middleware import _get_runtime_value
 from poirot.backend.agents.state.types import AgentError, ThreadState
 
-_RETRY_BUDGET = 5          # per-tool 连续失败上限（禁工具）
-_HARD_BUDGET = 30          # run 级工具调用总数上限
+_RETRY_BUDGET = 999       # per-tool 连续失败上限（禁工具）——放宽：用户要求取消限制
+_HARD_BUDGET = 999        # run 级工具调用总数上限——放宽：用户要求取消限制
 _SUMMARY_THRESHOLDS = (3, 6, 9)  # 失败摘要递进注入阈值
 
 # F5：业务失败特征正则
@@ -154,7 +154,9 @@ class ToolCallMiddleware(AgentMiddleware):
 
     state_schema = ThreadState  # type: ignore[assignment]
 
-    def __init__(self) -> None:
+    def __init__(self, retry_budget: int = _RETRY_BUDGET, hard_budget: int = _HARD_BUDGET) -> None:
+        self._retry_budget = retry_budget
+        self._hard_budget = hard_budget
         self._lock = threading.Lock()
         self._pending_summaries: dict[tuple[str, str], list[str]] = {}
         self._run_baselines: dict[tuple[str, str], int] = {}
@@ -282,12 +284,12 @@ class ToolCallMiddleware(AgentMiddleware):
             self._queue_summary(request.runtime, summary)
 
         # F8.5：硬预算兜底 —— per-run
-        if run_count >= _HARD_BUDGET:
+        if run_count >= self._hard_budget:
             self._queue_summary(
                 runtime,
                 f"本轮工具调用总数已达 {run_count}（预算 {_HARD_BUDGET}），必须收尾报告。",
             )
-            self._emit(runtime, "tool.budget_exhausted", {"count": run_count, "max": _HARD_BUDGET})
+            self._emit(runtime, "tool.budget_exhausted", {"count": run_count, "max": self._hard_budget})
 
         # 合并：若 result 已是 Command（内层 Evidence 返回），合并 errors 进 update
         if isinstance(result, Command):
@@ -348,20 +350,20 @@ class ToolCallMiddleware(AgentMiddleware):
         run_errors = self._run_errors_slice(request.runtime, errors)
 
         # F8.3：禁工具短路——per-run retry budget
-        if _latest_attempt(run_errors, tool_name) >= _RETRY_BUDGET:
+        if _latest_attempt(run_errors, tool_name) >= self._retry_budget:
             self._emit(request.runtime, "tool.blocked", {"tool": tool_name, "reason": "retry_budget_exhausted"})
             failure_msg = ToolMessage(
-                content=f"⚠️ 工具 {tool_name} 已达重试上限（{_RETRY_BUDGET}），已被禁用，请换方法或收尾。",
+                content=f"⚠️ 工具 {tool_name} 已达重试上限（{self._retry_budget}），已被禁用，请换方法或收尾。",
                 tool_call_id=request.tool_call.get("id", ""),
                 status="error",
             )
             return Command(update={"messages": [failure_msg]})
 
         # F8.5：硬预算短路——per-run 调用数达上限，拒绝所有后续工具，强制模型收尾
-        if run_count >= _HARD_BUDGET:
-            self._emit(request.runtime, "tool.budget_exhausted", {"count": run_count, "max": _HARD_BUDGET})
+        if run_count >= self._hard_budget:
+            self._emit(request.runtime, "tool.budget_exhausted", {"count": run_count, "max": self._hard_budget})
             failure_msg = ToolMessage(
-                content=f"⚠️ 本轮工具调用已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
+                content=f"⚠️ 本轮工具调用已达预算上限（{self._hard_budget}），所有工具已禁用，请立即基于现有证据输出最终报告。",
                 tool_call_id=request.tool_call.get("id", ""),
                 status="error",
             )
@@ -383,20 +385,20 @@ class ToolCallMiddleware(AgentMiddleware):
         run_count = self._run_tool_count(request.runtime, errors)
         run_errors = self._run_errors_slice(request.runtime, errors)
 
-        if _latest_attempt(run_errors, tool_name) >= _RETRY_BUDGET:
+        if _latest_attempt(run_errors, tool_name) >= self._retry_budget:
             self._emit(request.runtime, "tool.blocked", {"tool": tool_name, "reason": "retry_budget_exhausted"})
             failure_msg = ToolMessage(
-                content=f"⚠️ 工具 {tool_name} 已达重试上限（{_RETRY_BUDGET}），已被禁用，请换方法或收尾。",
+                content=f"⚠️ 工具 {tool_name} 已达重试上限（{self._retry_budget}），已被禁用，请换方法或收尾。",
                 tool_call_id=request.tool_call.get("id", ""),
                 status="error",
             )
             return Command(update={"messages": [failure_msg]})
 
         # F8.5：硬预算短路——per-run
-        if run_count >= _HARD_BUDGET:
-            self._emit(request.runtime, "tool.budget_exhausted", {"count": run_count, "max": _HARD_BUDGET})
+        if run_count >= self._hard_budget:
+            self._emit(request.runtime, "tool.budget_exhausted", {"count": run_count, "max": self._hard_budget})
             failure_msg = ToolMessage(
-                content=f"⚠️ 本轮工具调用已达预算上限（{_HARD_BUDGET}），所有工具已禁用，请立即基于现有证据输出最终报告。",
+                content=f"⚠️ 本轮工具调用已达预算上限（{self._hard_budget}），所有工具已禁用，请立即基于现有证据输出最终报告。",
                 tool_call_id=request.tool_call.get("id", ""),
                 status="error",
             )

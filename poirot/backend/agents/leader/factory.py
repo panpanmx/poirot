@@ -84,7 +84,10 @@ def _build_middlewares(
             sandbox_root=sandbox_root,
         ))
     middlewares.extend([
-        LoopDetectionMiddleware(),
+        # LoopDetectionMiddleware 已移除——用户要求取消循环上限约束。
+        # 原配置：after_model 检测近 10 条消息同 (tool, args_hash) ≥3 → 清 tool_calls + jump model。
+        # 如需恢复，取消下行注释 + 确保 import 存在。
+        # LoopDetectionMiddleware(),
         ToolCallMiddleware(),
         EvidenceMiddleware(),
         TodoMiddleware(enforce_completion=expert_mode),
