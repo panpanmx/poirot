@@ -36,7 +36,7 @@ class FakeLLM:
     def __init__(self, content: str) -> None:
         self._content = content
 
-    def invoke(self, messages):
+    def invoke(self, messages, **kwargs):
         return type("Resp", (), {"content": self._content})()
 
 

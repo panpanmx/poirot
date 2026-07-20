@@ -97,7 +97,10 @@ class SkillSelector:
             '只返 JSON: {"skills": ["skill_id1", "skill_id2"]}'
         )
         try:
-            resp = self._llm.invoke([HumanMessage(content=prompt)])
+            resp = self._llm.invoke(
+                [HumanMessage(content=prompt)],
+                config={"tags": ["internal_llm"]},
+            )
             content = resp.content if hasattr(resp, "content") else str(resp)
             data = json.loads(self._extract_json(content))
             ids = data.get("skills", [])
