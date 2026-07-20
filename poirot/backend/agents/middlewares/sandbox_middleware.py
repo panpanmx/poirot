@@ -108,7 +108,17 @@ class SandboxMiddleware(AgentMiddleware):
         return result
 
     def _register_artifacts(self, request: ToolCallRequest, sandbox_id: str) -> list[str]:
-        """Extract virtual paths from present_files args, register to server. Return URLs."""
+        """Extract virtual paths from present_files args, copy to .poirot/outputs/, register to server.
+
+        借鉴 deer-flow：deer-flow 用 router 从原位置 serve；Poirot CLI 场景更适合
+        复制到固定目录 .poirot/outputs/——用户总知道去哪里找产出物，任何格式都支持。
+        同时注册到 ArtifactServer 供 HTTP 下载。
+        """
+        import shutil
+        from pathlib import Path
+
+        from poirot.backend.app.bootstrap import _PROJECT_ROOT
+
         args = request.tool_call.get("args", {})
         if isinstance(args, dict):
             paths = args.get("paths", [])
@@ -116,6 +126,11 @@ class SandboxMiddleware(AgentMiddleware):
             paths = []
         else:
             paths = args if isinstance(args, list) else []
+
+        # 获取 sandbox 对象用于解析 host 路径
+        sandbox = self._provider.get(sandbox_id)
+        outputs_dir = _PROJECT_ROOT / ".poirot" / "outputs"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
 
         urls: list[str] = []
         for vp in paths:
@@ -125,11 +140,41 @@ class SandboxMiddleware(AgentMiddleware):
                 )
                 continue
             filename = vp[len(_VIRTUAL_PREFIX):].lstrip("/")
-            host_path = f"{self._sandbox_root}/{sandbox_id}/{filename}" if self._sandbox_root else None
-            if host_path:
-                url = self._artifact_server.register(sandbox_id, filename, host_path)
+
+            # 1. 解析 host 路径（通过 sandbox translator）
+            try:
+                if sandbox is not None:
+                    host_path = sandbox.get_host_path(vp)
+                else:
+                    host_path = f"{self._sandbox_root}/{sandbox_id}/{filename}" if self._sandbox_root else None
+            except Exception as exc:
+                logger.warning(f"present_files: failed to resolve host path for '{vp}': {exc}")
+                host_path = f"{self._sandbox_root}/{sandbox_id}/{filename}" if self._sandbox_root else None
+
+            if not host_path:
+                continue
+
+            # 2. 复制到 .poirot/outputs/（固定产出物目录）
+            dest = outputs_dir / filename
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(host_path, dest)
+                logger.info(f"Artifact copied: {host_path} → {dest}")
+            except Exception as exc:
+                logger.warning(f"present_files: copy failed '{host_path}' → '{dest}': {exc}")
+
+            # 3. 注册到 ArtifactServer（供 HTTP 下载）
+            if self._artifact_server is not None:
+                url = self._artifact_server.register(sandbox_id, filename, str(dest))
                 urls.append(url)
                 logger.info(f"Artifact registered: {url}")
+
+            # 4. 同时注册原始 host_path（如复制失败，至少原始路径可下载）
+            if self._artifact_server is not None and not dest.exists() and Path(host_path).exists():
+                url = self._artifact_server.register(sandbox_id, filename, host_path)
+                if url not in urls:
+                    urls.append(url)
+
         return urls
 
     async def aafter_agent(

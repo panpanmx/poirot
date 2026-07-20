@@ -39,6 +39,13 @@ class Sandbox:
     def id(self) -> str:
         return self._id
 
+    def get_host_path(self, virtual_path: str) -> str:
+        """虚拟路径 → 宿主物理路径（供外部复制/注册 artifact 用）。
+
+        走 translator.translate_path 但不做 guard.validate（调用方负责路径安全）。
+        """
+        return self._translator.translate_path(virtual_path)
+
     def execute_command(self, command: str) -> str:
         self._guard.validate_command(command)
         translated = self._translator.translate_command(command)
