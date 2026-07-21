@@ -94,6 +94,7 @@ class PoirotStreamClient:
         seen_ids: set[str] = set()
         streamed_ids: set[str] = set()
         seen_tool_call_ids: set[str] = set()
+        _internal_answer_ids: set[str] = set()  # sync invoke 内部 LLM 响应（tag 未传播时 fallback）
         first_values_frame = True
 
         async for item in self._graph.astream(
@@ -127,10 +128,11 @@ class PoirotStreamClient:
                 if isinstance(chunk, tuple) and len(chunk) == 2:
                     msg_chunk, _metadata = chunk
                 else:
-                    msg_chunk, chunk
+                    msg_chunk = chunk
+                    _metadata = {}
 
-                # 过滤内部 LLM 调用（summarizer/reporter/reflection）——tag=internal_llm
-                # 防止压缩/报告/反思的 model.invoke 输出泄漏到 CLI 当作 answer 渲染
+                # 过滤内部 LLM 调用（summarizer/reporter/reflection/skill-selector）——tag=internal_llm
+                # 防止压缩/报告/反思/skill选择的 model.invoke 输出泄漏到 CLI 当作 answer 渲染
                 if isinstance(_metadata, dict):
                     _tags = _metadata.get("tags") or []
                     if "internal_llm" in _tags:
@@ -152,6 +154,15 @@ class PoirotStreamClient:
 
                     # answer: content delta
                     text = _extract_text(msg_chunk.content)
+                    # Fallback filter: sync invoke in middleware (SkillSelector) may not
+                    # propagate internal_llm tags to async stream metadata. Filter by
+                    # content pattern: SkillSelector returns {"skills": [...]} JSON.
+                    if text and text.strip().startswith('{"skills":'):
+                        if msg_id:
+                            _internal_answer_ids.add(msg_id)
+                        continue
+                    if msg_id and msg_id in _internal_answer_ids:
+                        continue
                     if text:
                         if msg_id:
                             streamed_ids.add(msg_id)
