@@ -185,6 +185,9 @@ class StreamRenderer:
         # answer 累积完毕，统一 Markdown 渲染输出一次（不重复纯文本）
         full = self.state["full_answer"].strip()
         if full:
+            from poirot.backend.app.services.stream_service import _strip_skills_leak
+            full = _strip_skills_leak(full)
+        if full:
             self.console.print()
             self.console.print(Markdown(full))
         # 回答耗时尾行：■ Build · {model} · {elapsed}s（main.py 在 round 开始时注入 round_t0/model）

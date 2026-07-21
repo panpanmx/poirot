@@ -131,6 +131,8 @@ class ConversationLog(RichLog):
             self._render_tool_start(event)
         elif etype == "tool_end":
             self._render_tool_end(event)
+        elif etype == "skill_active":
+            self._render_skill_active(event)
         elif etype == "done":
             self._render_done()
         elif etype == "error":
@@ -186,6 +188,15 @@ class ConversationLog(RichLog):
             line.append("...", style=theme.TEXT_DIM)
         self.write(line)
 
+    def _render_skill_active(self, event: StreamEvent) -> None:
+        skills = event.get("skills") or []
+        if not skills:
+            return
+        label = Text("Skills", style=theme.TEXT_DIM)
+        for skill in skills:
+            label.append("\n  " + str(skill), style=theme.TEXT_DIM)
+        self.write(label)
+
     def _render_tool_end(self, event: StreamEvent) -> None:
         """工具结果行——与 CLI 一致：``✓ tool_name → result_summary``。
 
@@ -206,10 +217,10 @@ class ConversationLog(RichLog):
     def _render_done(self) -> None:
         full = self.state["full_answer"].strip()
         if full:
+            from poirot.backend.app.services.stream_service import _strip_skills_leak
+            full = _strip_skills_leak(full)
+        if full:
             self.write("")
-            # 助手回答不再套用户消息同款左竖条卡片——自然融入对话区背景，
-            # 和 CLI（``console.print(Markdown(full))``）保持同一视觉语言，
-            # 只有用户消息才用强调色卡片，助手输出更像"正文段落"。
             self.write(Markdown(full, style=theme.TEXT_PRIMARY))
         # 耗时尾行——■ Build · model · Ns
         round_t0 = self.state.get("round_t0")

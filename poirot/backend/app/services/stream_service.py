@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 class _StreamEventBase(TypedDict):
     """流式事件标准化结构，供 CLI 消费渲染。"""
 
-    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "done" | "error" | "budget_update" | "sandbox_update"
+    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "skill_active" | "done" | "error" | "budget_update" | "sandbox_update"
     content: str
     tool_name: str | None
     tool_args: dict | None
@@ -60,6 +60,47 @@ def _truncate(text: str, limit: int = 200) -> str:
     return text[:limit] + "..." if len(text) > limit else text
 
 
+def _is_skills_selector_output(text: str) -> bool:
+    """检测 SkillSelector LLM 输出：{"skills": [...]} 可能带 markdown fence 或前缀文字。
+
+    SkillSelector._llm_select 用 llm.invoke 选 skill，返回 JSON。同步 invoke 的
+    internal_llm tag 在 async 流式 metadata 中可能丢失，此函数作为 content fallback：
+    提取首个 JSON 对象，解析成功且含 "skills" key 即判定为 selector 输出。
+    """
+    if not text or '"skills"' not in text:
+        return False
+    import re
+    cleaned = re.sub(r'^```(?:json)?\s*\n?', '', text.strip())
+    cleaned = re.sub(r'\n?```\s*$', '', cleaned)
+    s = cleaned.find('{')
+    e = cleaned.rfind('}')
+    if s == -1 or e == -1 or e <= s:
+        return False
+    try:
+        import json
+        data = json.loads(cleaned[s:e + 1])
+        return isinstance(data, dict) and 'skills' in data
+    except (ValueError, TypeError):
+        return False
+
+
+def _strip_skills_leak(text: str) -> str:
+    """渲染层兜底：从 answer 文本中剥离残留的 SkillSelector JSON 输出。
+
+    stream 层按 msg_id 累积检测能拦截大部分情况（纯 JSON / markdown fence），
+    但 LLM 在 JSON 前加解释文字时首个 delta 不以 { 开头会直接 yield，此函数
+    在渲染前清洗 full_answer：移除 {"skills":[...]} JSON 片段及其 markdown 包裹。
+    """
+    if not text or '"skills"' not in text:
+        return text
+    import re
+    # 移除 markdown code block 包裹的 skills JSON
+    text = re.sub(r'```(?:json)?\s*\n?\{"skills"\s*:.*?\}\s*\n?```\s*', '', text, flags=re.DOTALL)
+    # 移除裸 skills JSON（可能带前缀文字）
+    text = re.sub(r'\{"skills"\s*:\s*\[.*?\]\}\s*', '', text, flags=re.DOTALL)
+    return text.strip()
+
+
 class PoirotStreamClient:
     """流式研究服务——消费 graph.astream，产出 StreamEvent。
 
@@ -95,6 +136,8 @@ class PoirotStreamClient:
         streamed_ids: set[str] = set()
         seen_tool_call_ids: set[str] = set()
         _internal_answer_ids: set[str] = set()  # sync invoke 内部 LLM 响应（tag 未传播时 fallback）
+        _answer_buffers: dict[str, str] = {}    # msg_id → 累积 answer 文本（selector 检测缓冲）
+        _answer_safe: set[str] = set()          # msg_id 确认非 selector 输出（直接 yield）
         first_values_frame = True
 
         async for item in self._graph.astream(
@@ -120,6 +163,7 @@ class PoirotStreamClient:
                         tool_args=chunk.get("tool_args"),
                         tool_result=chunk.get("tool_result"),
                         msg_id=chunk.get("msg_id"),
+                        **({"skills": chunk.get("skills", [])} if chunk.get("skills") is not None else {}),
                     )
                 continue
 
@@ -152,24 +196,54 @@ class PoirotStreamClient:
                             tool_name=None, tool_args=None, tool_result=None, msg_id=msg_id,
                         )
 
-                    # answer: content delta
+                    # answer: content delta — 按 msg_id 累积检测 selector 输出
+                    # SkillSelector 的 llm.invoke 返回 {"skills":[...]} JSON，sync invoke 的
+                    # internal_llm tag 在 async 流中可能丢失。JSON 跨多个 token delta，
+                    # 逐 delta 检测无法命中，必须累积后判断。
                     text = _extract_text(msg_chunk.content)
-                    # Fallback filter: sync invoke in middleware (SkillSelector) may not
-                    # propagate internal_llm tags to async stream metadata. Filter by
-                    # content pattern: SkillSelector returns {"skills": [...]} JSON.
-                    if text and text.strip().startswith('{"skills":'):
-                        if msg_id:
-                            _internal_answer_ids.add(msg_id)
-                        continue
-                    if msg_id and msg_id in _internal_answer_ids:
-                        continue
-                    if text:
-                        if msg_id:
-                            streamed_ids.add(msg_id)
+                    if not text:
+                        pass  # 空 delta，跳过下面处理
+                    elif msg_id and msg_id in _internal_answer_ids:
+                        pass  # 已确认 selector 输出，丢弃
+                    elif msg_id and msg_id in _answer_safe:
+                        # 已确认非 selector，直接 yield
+                        streamed_ids.add(msg_id)
                         yield StreamEvent(
                             type="answer", content=text,
                             tool_name=None, tool_args=None, tool_result=None, msg_id=msg_id,
                         )
+                    else:
+                        # 新 msg_id 或仍在缓冲 — 累积后判断
+                        buf = _answer_buffers.get(msg_id, "") + text
+                        _answer_buffers[msg_id] = buf
+
+                        if _is_skills_selector_output(buf):
+                            # 确认 selector 输出，丢弃整个 buffer
+                            _internal_answer_ids.add(msg_id)
+                            _answer_buffers.pop(msg_id, None)
+                        else:
+                            stripped = buf.lstrip()
+                            first = stripped[:1] if stripped else ""
+                            # selector 输出必以 { 或 ` (markdown fence) 开头
+                            # 非 {/` 开头 → 确认非 selector，flush buffer
+                            if first and first not in ('{', '`'):
+                                _answer_safe.add(msg_id)
+                                _answer_buffers.pop(msg_id, None)
+                                streamed_ids.add(msg_id)
+                                yield StreamEvent(
+                                    type="answer", content=buf,
+                                    tool_name=None, tool_args=None, tool_result=None, msg_id=msg_id,
+                                )
+                            elif len(buf) > 200:
+                                # 超 selector 输出长度上限 → 确认非 selector，flush
+                                _answer_safe.add(msg_id)
+                                _answer_buffers.pop(msg_id, None)
+                                streamed_ids.add(msg_id)
+                                yield StreamEvent(
+                                    type="answer", content=buf,
+                                    tool_name=None, tool_args=None, tool_result=None, msg_id=msg_id,
+                                )
+                            # else: 仍以 {/` 开头且 < 200 字符，继续缓冲等下个 delta
 
                     # tool_calls → tool_start（流式增量 chunk 会为同一 tool_call 重复产出——
                     # 首个 delta 通常带完整 name，后续只带 args 增量、name 常为空——按 id 去重
@@ -277,7 +351,7 @@ class PoirotStreamClient:
                     # 未通过 messages mode 输出的消息（如非 streaming 模型）
                     if isinstance(msg, AIMessage):
                         text = _extract_text(msg.content)
-                        if text:
+                        if text and not _is_skills_selector_output(text):
                             yield StreamEvent(
                                 type="answer", content=text,
                                 tool_name=None, tool_args=None, tool_result=None, msg_id=msg_id,
@@ -311,6 +385,17 @@ class PoirotStreamClient:
                 # LangGraph astream values mode 最后一帧是完整 final state
                 # 无精确 "done" 信号——靠 astream 结束后 yield done
                 continue
+
+        # flush 残留 answer buffer（selector 检测未决的 msg_id）
+        for mid, buf in _answer_buffers.items():
+            if mid in _internal_answer_ids or mid in streamed_ids:
+                continue
+            if not _is_skills_selector_output(buf):
+                streamed_ids.add(mid)
+                yield StreamEvent(
+                    type="answer", content=buf,
+                    tool_name=None, tool_args=None, tool_result=None, msg_id=mid,
+                )
 
         # astream 结束 → done
         yield StreamEvent(

@@ -61,6 +61,14 @@ class SkillInjectionMiddleware(AgentMiddleware):
             ids.append(rec.skill_id)
 
         injection = build_injection_text(active)
+        try:
+            from langgraph.config import get_stream_writer
+            get_stream_writer()({
+                "type": "skill_active",
+                "skills": [rec.name for rec in active],
+            })
+        except Exception:
+            pass
         # provenance ContextVar：供 SkillMetricsMiddleware.awrap_tool_call 读 allowed_tools + 标 applied
         _active_skills_ctx.set([(rec.skill_id, rec.allowed_tools) for rec in active])
         _applied_ctx.set({sid: None for sid in ids})
@@ -68,6 +76,7 @@ class SkillInjectionMiddleware(AgentMiddleware):
             "messages": [SystemMessage(content=injection)],
             "metadata": {
                 "active_skills": ids,
+                "skill_names": [rec.name for rec in active],
                 "skill_applied": {sid: None for sid in ids},
             },
         }

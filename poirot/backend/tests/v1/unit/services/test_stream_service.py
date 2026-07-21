@@ -78,3 +78,143 @@ def test_budget_update_init_zero_frame_filtered() -> None:
     assert len(budgets) == 1
     assert budgets[0]["budget"]["total"] == 150
     assert budgets[0]["budget"]["window"] == 128000
+
+
+def test_skills_selector_json_filtered_messages_mode() -> None:
+    """SkillSelector LLM 输出 {"skills":[]} 通过 messages mode 必须被过滤。
+
+    SkillSelector._llm_select 用 sync llm.invoke 选 skill，internal_llm tag 在
+    async 流式 metadata 中可能丢失，content fallback 必须拦截 {"skills":...} JSON。
+    """
+    from langchain_core.messages import AIMessageChunk, HumanMessage
+    chunk = (
+        "messages",
+        (
+            AIMessageChunk(content='{"skills": []}', id="sel-1"),
+            {"tags": []},
+        ),
+    )
+    graph = _FakeGraph([chunk])
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    assert all('{"skills"' not in (e["content"] or "") for e in answers)
+
+
+def test_skills_selector_json_with_prefix_filtered() -> None:
+    """LLM 在 JSON 前加了解释文字（如 '没有匹配的 skill。\\n{"skills": []}'）也必须过滤。"""
+    from langchain_core.messages import AIMessageChunk
+    chunk = (
+        "messages",
+        (
+            AIMessageChunk(content='根据任务没有匹配的 skill。\n{"skills": []}', id="sel-2"),
+            {"tags": []},
+        ),
+    )
+    graph = _FakeGraph([chunk])
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    assert all('{"skills"' not in (e["content"] or "") for e in answers)
+
+
+def test_skills_selector_json_markdown_wrapped_filtered() -> None:
+    """LLM 返回 markdown code fence 包裹的 JSON 也必须过滤。"""
+    from langchain_core.messages import AIMessageChunk
+    chunk = (
+        "messages",
+        (
+            AIMessageChunk(content='```json\n{"skills": ["a"]}\n```', id="sel-3"),
+            {"tags": []},
+        ),
+    )
+    graph = _FakeGraph([chunk])
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    assert all('"skills"' not in (e["content"] or "") for e in answers)
+
+
+def test_skills_selector_json_values_mode_filtered() -> None:
+    """非流式模型走 values mode fallback 路径，{"skills":[]} 也必须被过滤。"""
+    from langchain_core.messages import AIMessage, HumanMessage
+    internal_msg = AIMessage(content='{"skills": []}', id="sel-4")
+    graph = _FakeGraph([
+        ("values", {"messages": [HumanMessage(content="Q")]}),
+        ("values", {"messages": [internal_msg]}),
+    ])
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    assert all('{"skills"' not in (e["content"] or "") for e in answers)
+
+
+def test_normal_answer_not_filtered() -> None:
+    """正常 agent 回答（不含 skills JSON）不被误过滤。"""
+    from langchain_core.messages import AIMessageChunk
+    chunk = (
+        "messages",
+        (
+            AIMessageChunk(content='你好！我是 Poirot 研究助手。', id="ans-1"),
+            {"tags": []},
+        ),
+    )
+    graph = _FakeGraph([chunk])
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    assert any("Poirot" in (e["content"] or "") for e in answers)
+
+
+def test_skills_json_split_across_chunks_filtered() -> None:
+    """{"skills":[]} 跨多个 token delta 到达时也必须被过滤（实际 bug 场景）。
+
+    SkillSelector llm.invoke 的输出在 messages mode 以 token delta 流式到达：
+    delta1='{"', delta2='skills', delta3='": []}'。逐 delta 检测无法命中，
+    必须按 msg_id 累积后判断。
+    """
+    from langchain_core.messages import AIMessageChunk
+    chunks = [
+        ("messages", (AIMessageChunk(content='{"', id="sel-5"), {"tags": []})),
+        ("messages", (AIMessageChunk(content='skills', id="sel-5"), {"tags": []})),
+        ("messages", (AIMessageChunk(content='": []}', id="sel-5"), {"tags": []})),
+    ]
+    graph = _FakeGraph(chunks)
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    # 所有 answer 事件都不应包含 skills JSON
+    combined = "".join(e["content"] or "" for e in answers)
+    assert '"skills"' not in combined
+
+
+def test_skills_json_chunks_then_normal_answer() -> None:
+    """selector JSON（多 chunk）+ agent 正常回答（不同 msg_id）：selector 被过滤，answer 保留。"""
+    from langchain_core.messages import AIMessageChunk
+    chunks = [
+        ("messages", (AIMessageChunk(content='{"', id="sel-6"), {"tags": []})),
+        ("messages", (AIMessageChunk(content='skills": []}', id="sel-6"), {"tags": []})),
+        ("messages", (AIMessageChunk(content='Hello! I am Poirot.', id="ans-2"), {"tags": []})),
+    ]
+    graph = _FakeGraph(chunks)
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    combined = "".join(e["content"] or "" for e in answers)
+    assert '"skills"' not in combined
+    assert "Poirot" in combined
+
+
+def test_answer_starting_with_brace_not_selector() -> None:
+    """agent 回答以 { 开头但非 selector JSON（超 200 字符）→ buffer flush 不丢失。"""
+    from langchain_core.messages import AIMessageChunk
+    long_text = '{"data": "' + "x" * 250 + '"}'
+    chunks = [
+        ("messages", (AIMessageChunk(content=long_text, id="ans-3"), {"tags": []})),
+    ]
+    graph = _FakeGraph(chunks)
+    client = PoirotStreamClient(graph, config={})
+    events = asyncio.run(_drain(client.stream("Q")))
+    answers = [e for e in events if e["type"] == "answer"]
+    combined = "".join(e["content"] or "" for e in answers)
+    assert "x" * 250 in combined
