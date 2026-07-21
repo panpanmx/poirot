@@ -35,6 +35,20 @@ dev = [
 docker = [
     "agent-sandbox>=0.0.19",
 ]
+anthropic = [
+    "langchain-anthropic>=0.3.0",
+]
+gemini = [
+    "langchain-google-genai>=2.0.0",
+]
+ollama = [
+    "langchain-ollama>=0.3.0",
+]
+providers = [
+    "langchain-anthropic>=0.3.0",
+    "langchain-google-genai>=2.0.0",
+    "langchain-ollama>=0.3.0",
+]
 
 [dependency-groups]
 dev = [

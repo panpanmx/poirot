@@ -3,6 +3,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from poirot.backend.agents.config.provider_profile import (
+    PROVIDER_PROFILES,
+    ProviderProfile,
+    get_provider_profile,
+)
+
 
 class ProviderConfigError(ValueError):
     """Raised when model provider config is missing or invalid."""
@@ -17,6 +23,7 @@ class ProviderConfig:
     priority: int
     default: bool
     enabled: bool
+    window: int = 0  # 上下文窗口（token），0=未知，由 resolve_window_size 兜底
 
     def require_api_key(self) -> str:
         if not self.api_key:
@@ -24,55 +31,42 @@ class ProviderConfig:
         return self.api_key
 
 
-MODEL_PROVIDERS = [
-    {
-        "provider": "deepseek",
-        "model": "deepseek-v4-flash",
-        "api_key": os.environ.get("DEEPSEEK_API_KEY", ""),
-        "base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        "priority": 10,
-        "default": True,
-        "enabled": True,
-    },
-    {
-        "provider": "openai",
-        "model": "gpt-4.1-mini",
-        "api_key": os.environ.get("OPENAI_API_KEY", ""),
-        "base_url": os.environ.get("OPENAI_BASE_URL") or None,
-        "priority": 20,
-        "default": False,
-        "enabled": True,
-    },
-    {
-        "provider": "qwen",
-        "model": "qwen-plus",
-        "api_key": os.environ.get("QWEN_API_KEY", ""),
-        "base_url": os.environ.get("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-        "priority": 30,
-        "default": False,
-        "enabled": True,
-    },
-    {
-        "provider": "fake",
-        "model": "fake-chat",
-        "api_key": "",
-        "base_url": None,
-        "priority": 999,
-        "default": False,
-        "enabled": True,
-    },
-]
+def _resolve_profile(profile: ProviderProfile) -> ProviderConfig:
+    """从 ProviderProfile 读 env 解析为 ProviderConfig。
+
+    env 变量名在 profile 声明，值在此处读取（不在模块加载时读，利于测试 monkeypatch）。
+    每个 provider 支持 {NAME}_ENABLED=false 单独禁用。
+    """
+    api_key = os.environ.get(profile.env_key, "")
+    base_url = os.environ.get(profile.env_base_url, "") or profile.default_base_url
+    model = os.environ.get(profile.env_model, "") or profile.default_model
+    enabled_env = os.environ.get(f"{profile.name.upper()}_ENABLED", "true").lower()
+    return ProviderConfig(
+        provider=profile.name,
+        model=model,
+        api_key=api_key,
+        base_url=base_url if base_url else None,
+        priority=profile.priority,
+        default=profile.is_default,
+        enabled=enabled_env != "false",
+        window=profile.default_window,
+    )
+
+
+def _all_configs() -> list[ProviderConfig]:
+    """解析全部 provider profile 为 ProviderConfig（含 disabled）。"""
+    return [_resolve_profile(p) for p in PROVIDER_PROFILES]
 
 
 def select_provider_config(
     provider: str | None = None,
     model: str | None = None,
 ) -> ProviderConfig:
-    candidates = [_to_config(raw) for raw in MODEL_PROVIDERS if raw.get("enabled", True)]
+    candidates = [c for c in _all_configs() if c.enabled]
     if provider:
         selected = _find_provider(candidates, provider)
     else:
-        defaults = [candidate for candidate in candidates if candidate.default]
+        defaults = [c for c in candidates if c.default]
         selected = sorted(defaults or candidates, key=lambda item: item.priority)[0]
     if model:
         return ProviderConfig(
@@ -83,6 +77,7 @@ def select_provider_config(
             priority=selected.priority,
             default=selected.default,
             enabled=selected.enabled,
+            window=selected.window,
         )
     return selected
 
@@ -98,42 +93,31 @@ def _find_provider(candidates: list[ProviderConfig], provider: str) -> ProviderC
     raise ProviderConfigError(f"provider not configured: {provider}")
 
 
-def _to_config(raw: dict[str, object]) -> ProviderConfig:
-    return ProviderConfig(
-        provider=str(raw["provider"]),
-        model=str(raw["model"]),
-        api_key=str(raw.get("api_key") or ""),
-        base_url=raw.get("base_url") if isinstance(raw.get("base_url"), str) else None,
-        priority=int(raw["priority"]),
-        default=bool(raw.get("default", False)),
-        enabled=bool(raw.get("enabled", True)),
-    )
-
-
 # ---------------------------------------------------------------------------
 # 智能路由（deepseek 兜底）
 # ---------------------------------------------------------------------------
 
 # 角色路由链：按顺序偏好，链尾恒含 deepseek（兜底）。
 MODEL_ROUTES: dict[str, list[str]] = {
-    "researcher": ["openai", "qwen", "deepseek"],
+    "researcher": ["openai", "qwen", "anthropic", "gemini", "deepseek"],
     "reporter": ["qwen", "deepseek"],
     "reflection": ["deepseek"],
 }
 
-# 无需 api_key 的 provider（如测试用 fake）。
-_NO_KEY_PROVIDERS: frozenset[str] = frozenset({"fake"})
-
 
 def discover_available_providers() -> list[ProviderConfig]:
-    """返回 enabled 且 api_key 非空的 provider（fake 等免 key 的除外）。按 priority 升序。"""
+    """返回 enabled 且 api_key 非空的 provider（no_key_required 的除外）。按 priority 升序。"""
     available = [
-        _to_config(raw)
-        for raw in MODEL_PROVIDERS
-        if raw.get("enabled", True)
-        and (raw.get("api_key") or raw.get("provider") in _NO_KEY_PROVIDERS)
+        c for c in _all_configs()
+        if c.enabled and (c.api_key or _is_no_key(c.provider))
     ]
     return sorted(available, key=lambda p: p.priority)
+
+
+def _is_no_key(provider: str) -> bool:
+    """provider 是否无需 API key（fake / ollama）。"""
+    profile = get_provider_profile(provider)
+    return profile is not None and profile.no_key_required
 
 
 def route_chain_for(role: str, providers: list[ProviderConfig]) -> list[ProviderConfig]:
@@ -154,22 +138,68 @@ def route_chain_for(role: str, providers: list[ProviderConfig]) -> list[Provider
 
 
 def build_chat_model(config: ProviderConfig):
-    """根据 ProviderConfig 构造 BaseChatModel。provider_config 层公共构造器。"""
-    if config.provider not in _NO_KEY_PROVIDERS:
+    """根据 ProviderConfig 构造 BaseChatModel。按 provider kind 分发。
+
+    optional provider（anthropic/gemini/ollama）的 langchain 包未安装时
+    抛 ProviderConfigError 提示安装对应 optional-dependencies。
+    """
+    profile = get_provider_profile(config.provider)
+    if profile is None:
+        raise ProviderConfigError(f"unsupported provider: {config.provider}")
+    if not profile.no_key_required:
         config.require_api_key()
-    if config.provider == "deepseek":
+
+    kind = profile.kind
+    if kind == "deepseek":
         from langchain_deepseek import ChatDeepSeek
         kwargs: dict = {"model": config.model, "api_key": config.api_key}
         if config.base_url:
             kwargs["api_base"] = config.base_url
         return ChatDeepSeek(**kwargs)
-    if config.provider in ("openai", "qwen"):
+
+    if kind == "openai_compat":
         from langchain_openai import ChatOpenAI
-        kwargs: dict = {"model": config.model, "api_key": config.api_key}
+        kwargs = {"model": config.model, "api_key": config.api_key}
         if config.base_url:
             kwargs["base_url"] = config.base_url
         return ChatOpenAI(**kwargs)
-    if config.provider == "fake":
+
+    if kind == "anthropic":
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError:
+            raise ProviderConfigError(
+                "langchain-anthropic not installed. Run: pip install langchain-anthropic"
+            )
+        kwargs = {"model": config.model, "api_key": config.api_key}
+        if config.base_url:
+            kwargs["base_url"] = config.base_url
+        return ChatAnthropic(**kwargs)
+
+    if kind == "gemini":
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+        except ImportError:
+            raise ProviderConfigError(
+                "langchain-google-genai not installed. Run: pip install langchain-google-genai"
+            )
+        kwargs = {"model": config.model, "google_api_key": config.api_key}
+        return ChatGoogleGenerativeAI(**kwargs)
+
+    if kind == "ollama":
+        try:
+            from langchain_ollama import ChatOllama
+        except ImportError:
+            raise ProviderConfigError(
+                "langchain-ollama not installed. Run: pip install langchain-ollama"
+            )
+        kwargs = {"model": config.model}
+        if config.base_url:
+            kwargs["base_url"] = config.base_url
+        return ChatOllama(**kwargs)
+
+    if kind == "fake":
         from langchain_core.language_models.fake_chat_models import FakeListChatModel
         return FakeListChatModel(responses=["fake response from fake provider"])
-    raise ProviderConfigError(f"unsupported provider: {config.provider}")
+
+    raise ProviderConfigError(f"unsupported provider kind: {kind}")

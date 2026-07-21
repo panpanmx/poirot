@@ -60,6 +60,21 @@ _MODEL_WINDOW_MAP: dict[str, int] = {
     "step-1": 8_192,
     # MiniMax
     "abab6.5": 245_760,
+    # xAI Grok
+    "grok-3": 131_072,
+    "grok-2": 131_072,
+    # Google Gemini
+    "gemini-2.0-flash": 1_000_000,
+    "gemini-2.5-flash": 1_000_000,
+    "gemini-2.5-pro": 2_000_000,
+    "gemini-1.5-flash": 1_000_000,
+    "gemini-1.5-pro": 2_000_000,
+    "gemini": 1_000_000,
+    # Anthropic Claude 4+（3.x 已在上方）
+    "claude-sonnet-4": 200_000,
+    "claude-opus-4": 200_000,
+    "claude-haiku-4": 200_000,
+    "claude": 200_000,
     # vLLM / openai-compatible 默认
     "vllm": 128_000,
 }
