@@ -23,7 +23,7 @@ def test_compiler_always_has_global_hard_rules():
     rules = ContractCompiler().compile("# Some skill\n\nbody")
     rule_ids = [r.rule_id for r in rules]
     assert "nonempty" in rule_ids
-    assert "frontmatter_parseable" in rule_ids
+    assert "json_parseable" in rule_ids
     assert rules[0].hard is True
     assert rules[1].hard is True
 
@@ -118,10 +118,10 @@ def test_checker_nonempty_hard_failure():
 
 
 def test_checker_frontmatter_hard_failure():
-    """坏 frontmatter → frontmatter_parseable 硬失败 → reject。"""
+    """坏 frontmatter → json_parseable 硬失败 → reject。"""
     content = '---\nname: "unclosed\n---\n\nbody'
     result = ResponseContractChecker().check(content, "")
-    assert "frontmatter_parseable" in result.hard_failures
+    assert "json_parseable" in result.hard_failures
     assert result.recommendation == "reject"
 
 

@@ -31,7 +31,7 @@ class ContractCompiler:
         rules: list[ContractRule] = [
             ContractRule("nonempty", kind="programmatic", hard=True,
                          description="SKILL.md body 非空"),
-            ContractRule("frontmatter_parseable", kind="programmatic", hard=True,
+            ContractRule("json_parseable", kind="programmatic", hard=True,
                          description="frontmatter YAML 可解析"),
         ]
 

@@ -1,191 +1,80 @@
-"""ProgrammaticEvalBridge — 零 LLM eval floor（D8 拒绝裸跑底线）。
+"""ProgrammaticEvalBridge — 兼容 facade（D1 方案 A + facade 保留）。
 
-SkillEvo 7 mode（借鉴 AutoSkill/SkillEvo evals.py）确定性检查 candidate SKILL.md：
-- nonempty: body 非空
-- json_parseable: frontmatter YAML 可解析
-- must_cite: 含引用/来源标记（@/http/来源）
-- paragraph_limit: body 段落不超限（防冗长）
-- lead_with_conclusion: 首段含结论性词（结论/总结/核心）
-- markdown_table: 含 markdown 表格结构（如适用）
-- no_unfounded_claims: 无绝对化无据声明（绝对/一定/必然 + 无来源）
-
-SkillOpt semantic_density：统计 MUST/ALWAYS/NEVER/SHOULD 等指令性词密度（过高=冗长，过低=缺指令）。
-
-返 EvalResult（score [0,1] + hard_failures + evidence）。零 LLM 调用。
-L3 建好后降为 EvalAdapter registry 一员，EvalBridge Protocol 不变零侵入替换。
+L3 关闭时 EvolutionManager 用此 facade。内部委托 ResponseContractChecker（contract-aware 升级版）。
+L3 启用时 bootstrap 注入 RegistryEvalBridge 替换此 facade。
+_check_* 静态方法保留为 checks 模块的委托——L2a 测试直接调 ProgrammaticEvalBridge._check_*。
 """
 from __future__ import annotations
 
-import re
-from typing import Any
-
-from poirot.backend.agents.skill.evolution.types import (
-    EvalContext,
-    EvalEvidence,
-    EvalResult,
+from poirot.backend.agents.skill.evolution.types import EvalContext, EvalResult
+from poirot.backend.agents.skill.eval.analyzers import checks
+from poirot.backend.agents.skill.eval.analyzers.contract_compiler import ContractCompiler
+from poirot.backend.agents.skill.eval.analyzers.response_contract_checker import (
+    ResponseContractChecker,
 )
 
-# hard failure modes（关键失败，触发即 reject 倾向）
-_HARD_MODES = ("nonempty", "json_parseable")
-
-# 指令性词（semantic_density，借鉴 SkillOpt）
-_DIRECTIVE_WORDS = ("MUST", "ALWAYS", "NEVER", "SHOULD", "MUST NOT", "REQUIRED", "FORBIDDEN")
-_UNFOUNDED_WORDS = ("绝对", "一定", "必然", "毫无疑问", "absolutely", "definitely", "certainly")
-_CONCLUSION_WORDS = ("结论", "总结", "核心", "要点", "conclusion", "summary", "key")
-_CITE_PATTERN = re.compile(r"(https?://|@[\w-]+|来源|引用|source|cite)", re.IGNORECASE)
-_TABLE_PATTERN = re.compile(r"^\|.+\|$", re.MULTILINE)
-_YAML_FRONTMATTER = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
-
-_PARAGRAPH_LIMIT = 20  # 段落数上限
-_SEMANTIC_DENSITY_MIN = 0.005  # 指令性词最低密度（过低=缺指令）
-_SEMANTIC_DENSITY_MAX = 0.15   # 最高密度（过高=冗长）
+# 向后兼容：L2a 测试引用的模块级常量
+_HARD_MODES = checks.HARD_MODES
+_DIRECTIVE_WORDS = checks.DIRECTIVE_WORDS
+_UNFOUNDED_WORDS = checks.UNFOUNDED_WORDS
+_CONCLUSION_WORDS = checks.CONCLUSION_WORDS
+_CITE_PATTERN = checks.CITE_PATTERN
+_YAML_FRONTMATTER = checks.YAML_FRONTMATTER
+_PARAGRAPH_LIMIT = checks.PARAGRAPH_LIMIT
+_SEMANTIC_DENSITY_MIN = checks.SEMANTIC_DENSITY_MIN
+_SEMANTIC_DENSITY_MAX = checks.SEMANTIC_DENSITY_MAX
 
 
 class ProgrammaticEvalBridge:
-    """零 LLM eval floor。对 candidate 跑 7 mode + semantic_density。"""
+    """兼容 facade。内部委托 ResponseContractChecker。"""
+
+    def __init__(self) -> None:
+        self._checker = ResponseContractChecker(ContractCompiler())
 
     def evaluate(self, ctx: EvalContext) -> EvalResult:
-        """跑确定性检查，返 EvalResult。
-
-        score = 通过 mode 数 / 总 mode 数（含 semantic_density）。
-        hard_failures = 触发 hard mode（nonempty/json_parseable）失败的 rule 名。
-        """
+        """委托 ResponseContractChecker。读 candidate/baseline SKILL.md 内容。"""
         candidate_content = self._read_content(ctx.candidate)
         baseline_content = self._read_content(ctx.baseline) if ctx.baseline else ""
+        return self._checker.check(candidate_content, baseline_content)
 
-        evidence: list[EvalEvidence] = []
-        hard_failures: list[str] = []
-        passed = 0
-        total = 0
-
-        # 7 mode
-        for mode_name, check_fn in (
-            ("nonempty", self._check_nonempty),
-            ("json_parseable", self._check_json_parseable),
-            ("must_cite", self._check_must_cite),
-            ("paragraph_limit", self._check_paragraph_limit),
-            ("lead_with_conclusion", self._check_lead_with_conclusion),
-            ("markdown_table", self._check_markdown_table),
-            ("no_unfounded_claims", self._check_no_unfounded_claims),
-        ):
-            total += 1
-            baseline_pass = check_fn(baseline_content) if baseline_content else True
-            candidate_pass = check_fn(candidate_content)
-            if candidate_pass:
-                passed += 1
-            if mode_name in _HARD_MODES and not candidate_pass:
-                hard_failures.append(mode_name)
-            evidence.append(EvalEvidence(
-                kind="programmatic_rule",
-                rule_name=mode_name,
-                baseline_pass=baseline_pass,
-                candidate_pass=candidate_pass,
-            ))
-
-        # semantic_density（连续值，转 pass/fail：在 [min,max] 内 pass）
-        total += 1
-        density = self._semantic_density(candidate_content)
-        density_pass = _SEMANTIC_DENSITY_MIN <= density <= _SEMANTIC_DENSITY_MAX if candidate_content else False
-        if density_pass:
-            passed += 1
-        baseline_density = self._semantic_density(baseline_content) if baseline_content else 0.0
-        evidence.append(EvalEvidence(
-            kind="programmatic_rule",
-            rule_name="semantic_density",
-            baseline_pass=_SEMANTIC_DENSITY_MIN <= baseline_density <= _SEMANTIC_DENSITY_MAX,
-            candidate_pass=density_pass,
-            detail=f"density={density:.4f}",
-        ))
-
-        score = passed / total if total else 0.0
-        # bridge 推荐：hard_failure → reject；否则 accept（gate 据 score delta 决策）
-        recommendation = "reject" if hard_failures else "accept"
-
-        return EvalResult(
-            score=score,
-            metric="hard",
-            hard_failures=tuple(hard_failures),
-            evidence=tuple(evidence),
-            confidence=0.7,
-            recommendation=recommendation,  # type: ignore[arg-type]
-        )
-
-    # ── 7 mode 检查 ───────────────────────────────────────
+    # ── 静态方法委托 checks 模块（L2a 测试向后兼容）────────
 
     @staticmethod
-    def _read_content(record: Any) -> str:
-        """读 SKILL.md 全文。record.path 文件。失败返空。"""
-        try:
-            from pathlib import Path
-            return Path(record.path).read_text(encoding="utf-8")
-        except Exception:
-            return ""
+    def _read_content(record) -> str:
+        return checks.read_content(record)
 
     @staticmethod
     def _split_body(content: str) -> str:
-        """去 frontmatter，返 body。"""
-        m = _YAML_FRONTMATTER.match(content)
-        if m:
-            return content[m.end():]
-        return content
+        return checks.split_body(content)
 
     @staticmethod
     def _check_nonempty(content: str) -> bool:
-        body = ProgrammaticEvalBridge._split_body(content)
-        return len(body.strip()) > 0
+        return checks.check_nonempty(content)
 
     @staticmethod
     def _check_json_parseable(content: str) -> bool:
-        """frontmatter YAML 可解析。无 frontmatter 也算 pass（CAPTURED 可能无）。"""
-        m = _YAML_FRONTMATTER.match(content)
-        if not m:
-            return True
-        try:
-            import yaml
-            yaml.safe_load(m.group(1))
-            return True
-        except Exception:
-            return False
+        return checks.check_json_parseable(content)
 
     @staticmethod
     def _check_must_cite(content: str) -> bool:
-        """含引用/来源标记。"""
-        return bool(_CITE_PATTERN.search(content))
+        return checks.check_must_cite(content)
 
     @staticmethod
     def _check_paragraph_limit(content: str) -> bool:
-        """段落数不超限。"""
-        body = ProgrammaticEvalBridge._split_body(content)
-        paragraphs = [p for p in body.split("\n\n") if p.strip()]
-        return len(paragraphs) <= _PARAGRAPH_LIMIT
+        return checks.check_paragraph_limit(content)
 
     @staticmethod
     def _check_lead_with_conclusion(content: str) -> bool:
-        """首 3 段含结论性词（lead with conclusion）。软检查，无则 fail 不 hard。"""
-        body = ProgrammaticEvalBridge._split_body(content).strip()
-        if not body:
-            return False
-        paras = body.split("\n\n")[:3]
-        head = "\n\n".join(paras)
-        return any(w.lower() in head.lower() for w in _CONCLUSION_WORDS)
+        return checks.check_lead_with_conclusion(content)
 
     @staticmethod
     def _check_markdown_table(content: str) -> bool:
-        """含 markdown 表格结构（如适用，无也 pass——非强制）。"""
-        return True  # 非所有 skill 需表格，宽松 pass
+        return True  # 非所有 skill 需表格，宽松 pass（L2a 兼容）
 
     @staticmethod
     def _check_no_unfounded_claims(content: str) -> bool:
-        """无绝对化无据声明。"""
-        return not any(w in content for w in _UNFOUNDED_WORDS)
+        return checks.check_no_unfounded_claims(content)
 
     @staticmethod
     def _semantic_density(content: str) -> float:
-        """指令性词密度 = 指令词出现次数 / 总词数。"""
-        if not content:
-            return 0.0
-        words = re.findall(r"\w+", content)
-        if not words:
-            return 0.0
-        count = sum(content.upper().count(w) for w in _DIRECTIVE_WORDS)
-        return count / len(words)
+        return checks.semantic_density(content)

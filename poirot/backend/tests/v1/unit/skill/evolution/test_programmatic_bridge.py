@@ -174,13 +174,13 @@ def test_zero_llm(tmp_path):
 
 
 def test_score_is_pass_ratio(tmp_path):
-    """score = passed / total（8 mode）。"""
+    """score = passed / total（contract-aware，规则数随 skill 文本变化）。"""
     ctx = _ctx(_GOOD_SKILL, _GOOD_SKILL, tmp_path)
     result = ProgrammaticEvalBridge().evaluate(ctx)
-    # 8 mode（7 + semantic_density）
-    assert len(result.evidence) == 8
+    total = len(result.evidence)
     passed = sum(1 for e in result.evidence if e.candidate_pass)
-    assert abs(result.score - passed / 8) < 0.01
+    assert total > 0
+    assert abs(result.score - passed / total) < 0.01
 
 
 def test_evidence_has_baseline_and_candidate(tmp_path):
