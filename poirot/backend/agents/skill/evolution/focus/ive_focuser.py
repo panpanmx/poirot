@@ -39,19 +39,23 @@ class IVEFocuser:
     def focus(self, ctx: EvolutionContext, store: Any) -> EvolutionContext:
         """聚焦失败证据，产 failure_class + fix_direction。
 
+        D-L3-20: 读 SkillJudgment 历史，deviation_note 作 failure_evidence 补充。
         ctx.failure_evidence 非空时 LLM 5 问诊断；空时（如 CAPTURED）保留原 ctx。
         """
         if not ctx.failure_evidence:
             # CAPTURED 无失败证据，直接返原 ctx（CAPTURED 是沉淀非修复）
             return ctx
 
+        # D-L3-20: 读 SkillJudgment 历史补充失败证据
+        judgment_notes = self._read_judgment_notes(ctx, store)
+
         if self._llm is None:
             # 降级：全量摘要，默认 IMPLEMENTATION（保守，不轻易判 fundamental）
-            return self._degrade_focus(ctx)
+            return self._degrade_focus(ctx, judgment_notes)
 
         # LLM 5 问诊断
         skill_name = ctx.target_skill.name if ctx.target_skill else ctx.suggested_name
-        failure_class, fix_direction = self._llm_diagnose(ctx, skill_name)
+        failure_class, fix_direction = self._llm_diagnose(ctx, skill_name, judgment_notes)
 
         # implementation 累计升级 fundamental
         if failure_class == "IMPLEMENTATION":
@@ -81,15 +85,32 @@ class IVEFocuser:
         from dataclasses import replace
         return replace(ctx, failure_evidence=updated_evidence, fix_direction=fix_direction)
 
-    def _degrade_focus(self, ctx: EvolutionContext) -> EvolutionContext:
+    def _degrade_focus(
+        self, ctx: EvolutionContext, judgment_notes: list[str] | None = None,
+    ) -> EvolutionContext:
         """LLM=None 降级：全量摘要，默认 IMPLEMENTATION。"""
         summaries = [e.description for e in ctx.failure_evidence]
-        fix_direction = "LLM 未启用，降级全量摘要。失败证据：" + " | ".join(summaries)
+        parts = ["失败证据：" + " | ".join(summaries)]
+        if judgment_notes:
+            parts.append("SkillJudgment 偏差：" + " | ".join(judgment_notes))
+        fix_direction = "LLM 未启用，降级全量摘要。" + " ".join(parts)
         from dataclasses import replace
         return replace(ctx, fix_direction=fix_direction)
 
+    @staticmethod
+    def _read_judgment_notes(ctx: EvolutionContext, store: Any) -> list[str]:
+        """D-L3-20: 从 store 读 SkillJudgment 历史，返 deviation_note 列表。"""
+        if store is None or ctx.target_skill is None:
+            return []
+        try:
+            judgments = store.get_judgments(ctx.target_skill.skill_id, limit=10)
+            return [j.deviation_note for j in judgments if j.deviation_note]
+        except Exception:
+            return []
+
     def _llm_diagnose(
         self, ctx: EvolutionContext, skill_name: str,
+        judgment_notes: list[str] | None = None,
     ) -> tuple[FailureClass, str]:
         """LLM 5 问诊断。返 (failure_class, fix_direction)。
 
@@ -105,9 +126,14 @@ class IVEFocuser:
                 f"- turn={e.turn_index} tool={e.tool_name}: {e.description}"
                 for e in ctx.failure_evidence
             )
+            judgment_text = ""
+            if judgment_notes:
+                judgment_text = "\n\nSkillJudgment 偏差记录:\n" + "\n".join(
+                    f"- {n}" for n in judgment_notes
+                )
             prompt = (
                 f"Skill: {skill_name}\n描述: {skill_desc}\n\n"
-                f"失败证据:\n{evidence_text}\n\n"
+                f"失败证据:\n{evidence_text}{judgment_text}\n\n"
                 f"IVE 5 问诊断：\n"
                 f"1. 失败发生在 skill 哪一步？\n"
                 f"2. 是 skill 指令本身错（FUNDAMENTAL）还是执行偏差（IMPLEMENTATION）？\n"

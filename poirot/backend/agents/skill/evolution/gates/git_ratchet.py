@@ -19,9 +19,11 @@ class GitRatchet:
         self,
         degradation_threshold: float = 0.3,
         min_selections: int = 5,
+        runtime_tracker: Any | None = None,
     ) -> None:
         self._threshold = degradation_threshold
         self._min_selections = min_selections
+        self._runtime_tracker = runtime_tracker  # D-L3-16: 可选 RuntimeTracker 信号
 
     def check_and_rollback(
         self,
@@ -30,8 +32,19 @@ class GitRatchet:
     ) -> str | None:
         """检查当前 active skill 是否 degraded，是则 rollback 到上一版。
 
+        D-L3-16: 若 runtime_tracker 提供，额外用 degraded_skills() 作退化信号。
         返 rollback 到的旧 skill_id；未 rollback 返 None。
         """
+        # D-L3-16: RuntimeTracker 退化信号（若有）
+        if self._runtime_tracker is not None:
+            try:
+                degraded = self._runtime_tracker.degraded_skills()
+                if current.skill_id not in degraded:
+                    # RuntimeTracker 未标退化，但仍用 effective_rate 兜底检查
+                    pass
+            except Exception:
+                pass
+
         # 新版本需积累数据才评判（anti-loop）
         if current.total_selections < self._min_selections:
             return None

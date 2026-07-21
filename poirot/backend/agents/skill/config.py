@@ -12,7 +12,7 @@ INVARIANT:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # 项目根——config.py 位于 poirot/backend/agents/skill/，parents[4] 即项目根。
@@ -54,6 +54,23 @@ class SkillConfig:
     evolve_cooldown_turns: int = 10
     evolve_mutate_budget: int = 20
     evolve_max_steps: int = 5
+    eval_config: "SkillEvalConfig" = field(default_factory=lambda: SkillEvalConfig())
+
+
+@dataclass(frozen=True)
+class SkillEvalConfig:
+    """Layer 3 eval 配置（D-L3-8 默认 opt-in false）。"""
+    enabled: bool = False
+    judgment_enabled: bool = True
+    task_judge_enabled: bool = True
+    contract_check: bool = True
+    async_eval: bool = True
+    skip_no_skill: bool = True
+    runtime_window: int = 20
+    degradation_delta: float = 0.15
+    captured_min_score: float = 0.5
+    max_messages_chars: int = 80000
+    task_weights: tuple[float, ...] = (0.50, 0.35, 0.05, 0.10)
 
 
 def load_skill_config() -> SkillConfig:
@@ -112,6 +129,54 @@ def load_skill_config() -> SkillConfig:
     except (ValueError, TypeError):
         evolve_max_steps = 5
 
+    # Layer 3 eval 配置
+    eval_enabled = os.environ.get("POIROT_SKILL_EVAL_ENABLED", "false").lower() == "true"
+    eval_judgment = os.environ.get("POIROT_SKILL_EVAL_JUDGMENT_ENABLED", "true").lower() == "true"
+    eval_task_judge = os.environ.get("POIROT_SKILL_EVAL_TASK_JUDGE_ENABLED", "true").lower() == "true"
+    eval_contract = os.environ.get("POIROT_SKILL_EVAL_CONTRACT_CHECK", "true").lower() == "true"
+    eval_async = os.environ.get("POIROT_SKILL_EVAL_ASYNC", "true").lower() == "true"
+    eval_skip_no_skill = os.environ.get("POIROT_SKILL_EVAL_SKIP_NO_SKILL", "true").lower() == "true"
+
+    try:
+        eval_window = int(os.environ.get("POIROT_SKILL_EVAL_RUNTIME_WINDOW", "20"))
+    except (ValueError, TypeError):
+        eval_window = 20
+
+    try:
+        eval_degradation = float(os.environ.get("POIROT_SKILL_EVAL_DEGRADATION_DELTA", "0.15"))
+    except (ValueError, TypeError):
+        eval_degradation = 0.15
+
+    try:
+        eval_captured_min = float(os.environ.get("POIROT_SKILL_EVAL_CAPTURED_MIN_SCORE", "0.5"))
+    except (ValueError, TypeError):
+        eval_captured_min = 0.5
+
+    try:
+        eval_max_chars = int(os.environ.get("POIROT_SKILL_EVAL_MAX_MESSAGES_CHARS", "80000"))
+    except (ValueError, TypeError):
+        eval_max_chars = 80000
+
+    weights_raw = os.environ.get("POIROT_SKILL_EVAL_TASK_WEIGHTS", "0.50,0.35,0.05,0.10")
+    try:
+        eval_weights = tuple(float(w.strip()) for w in weights_raw.split(","))
+    except (ValueError, TypeError):
+        eval_weights = (0.50, 0.35, 0.05, 0.10)
+
+    eval_config = SkillEvalConfig(
+        enabled=eval_enabled,
+        judgment_enabled=eval_judgment,
+        task_judge_enabled=eval_task_judge,
+        contract_check=eval_contract,
+        async_eval=eval_async,
+        skip_no_skill=eval_skip_no_skill,
+        runtime_window=eval_window,
+        degradation_delta=eval_degradation,
+        captured_min_score=eval_captured_min,
+        max_messages_chars=eval_max_chars,
+        task_weights=eval_weights,
+    )
+
     return SkillConfig(
         enabled=enabled,
         db_path=db_path,
@@ -126,4 +191,5 @@ def load_skill_config() -> SkillConfig:
         evolve_cooldown_turns=evolve_cooldown_turns,
         evolve_mutate_budget=evolve_mutate_budget,
         evolve_max_steps=evolve_max_steps,
+        eval_config=eval_config,
     )
