@@ -48,6 +48,7 @@ class SkillManager:
         self._injection: Any = None
         self._metrics: Any = None
         self._evolution: Any = None  # EvolutionManager，由 bootstrap 装配（避免循环依赖）
+        self._eval_layer: Any = None  # L3 EvalLayer，由 bootstrap 装配
 
     def get_evolution_manager(self) -> Any:
         """返 EvolutionManager（未装配时 None）。"""
@@ -56,6 +57,14 @@ class SkillManager:
     def set_evolution_manager(self, manager: Any) -> None:
         """bootstrap 装配 EvolutionManager 注入。"""
         self._evolution = manager
+
+    def get_eval_layer(self) -> Any:
+        """返 L3 EvalLayer（未装配时 None）。"""
+        return self._eval_layer
+
+    def set_eval_layer(self, eval_layer: Any) -> None:
+        """bootstrap 装配 L3 EvalLayer 注入。"""
+        self._eval_layer = eval_layer
 
     def load_startup(self, llm: Any | None = None) -> None:
         """discover skill_dirs（用户 IMPORTED）+ builtin_skills（核心 BUILTIN）+ sync + 建 middleware。"""

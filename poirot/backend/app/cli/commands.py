@@ -328,6 +328,63 @@ def _cmd_skill(ctx: CommandContext) -> None:
                 f"ts={row['timestamp']}"
             )
         return
+    # health [name]：RuntimeTracker 健康报告
+    if parts and parts[0] == "health":
+        name = parts[1].strip() if len(parts) > 1 else ""
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        if mgr is None:
+            ctx.console.print("[dim]Skill module not enabled[/dim]")
+            return
+        from poirot.backend.agents.skill.eval.runtime_tracker import RuntimeTracker
+        tracker = RuntimeTracker(mgr.store)
+        if name:
+            rec = mgr.store.get_active(name)
+            if rec is None:
+                ctx.console.print(f"[red]Skill not found: {name}[/red]")
+                return
+            report = tracker.health_report(rec.skill_id)
+            ctx.console.print(
+                f"[bold]{report.skill_name}[/bold] sel={report.window_selections} "
+                f"eff={report.effective_rate:.0%} app={report.applied_rate:.0%} "
+                f"comp={report.completion_rate:.0%} fb={report.fallback_rate:.0%} "
+                f"trend={report.trend}"
+            )
+            if report.advice:
+                ctx.console.print(f"  [dim]{report.advice}[/dim]")
+        else:
+            for rec in mgr.store.list_active():
+                report = tracker.health_report(rec.skill_id)
+                ctx.console.print(
+                    f"  [cyan]{report.skill_name}[/cyan] eff={report.effective_rate:.0%} "
+                    f"trend={report.trend}"
+                )
+        return
+    # eval-history <name>：查看 eval 历史（judgments）
+    if parts and parts[0] == "eval-history":
+        if len(parts) < 2 or not parts[1].strip():
+            ctx.console.print("[yellow]Usage: /skill eval-history <name>[/yellow]")
+            return
+        name = parts[1].strip()
+        mgr = getattr(ctx.runtime, "skill_manager", None)
+        if mgr is None:
+            ctx.console.print("[dim]Skill module not enabled[/dim]")
+            return
+        rec = mgr.store.get_active(name)
+        if rec is None:
+            ctx.console.print(f"[red]Skill not found: {name}[/red]")
+            return
+        judgments = mgr.store.get_judgments(rec.skill_id)
+        if not judgments:
+            ctx.console.print(f"[dim]No eval history for '{name}'[/dim]")
+            return
+        ctx.console.print(f"[bold]Eval history for '{name}':[/bold]")
+        for j in judgments:
+            applied = "[green]applied[/green]" if j.skill_applied else "[red]not applied[/red]"
+            ctx.console.print(
+                f"  {applied} task={j.task_id} ts={j.timestamp}"
+                + (f"\n    {j.deviation_note}" if j.deviation_note else "")
+            )
+        return
     # install <path> [name]：parser.install 拷到 skills/ + re-discover
     if parts and parts[0] == "install":
         rest = parts[1].strip() if len(parts) > 1 else ""
