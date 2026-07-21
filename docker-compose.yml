@@ -1,0 +1,31 @@
+# Poirot docker-compose — 一键启动深度研究 Agent
+#
+# 用法:
+#   docker compose run --rm poirot              # TUI 交互（首次会启动配置向导）
+#   docker compose run --rm poirot cli          # 传统 CLI 滚动模式
+#   docker compose run --rm poirot run "问题"   # 单次研究
+#
+# 配置:
+#   1. 首次运行容器内会触发配置向导（生成 /app/.env）
+#   2. 或在宿主机项目根创建 .env，通过 env_file 注入
+#
+# 数据持久化:
+#   .poirot/ → /app/.poirot（DB、日志、artifact、MCP 配置）
+#   skills/  → /app/skills（用户上传 skill）
+
+services:
+  poirot:
+    build: .
+    image: poirot:latest
+    container_name: poirot
+    stdin_open: true      # 交互式输入
+    tty: true             # 终端色彩 + TUI 全屏
+    env_file:
+      - path: .env        # 宿主机 .env（不存在则忽略）
+        required: false
+    volumes:
+      - ./.poirot:/app/.poirot   # 运行时数据持久化
+      - ./skills:/app/skills     # 用户 skill 持久化
+    # 默认无 command，走 ENTRYPOINT 的 poirot（TUI 模式）
+    # 覆盖示例: docker compose run --rm poirot cli
+    #           docker compose run --rm poirot run "研究问题"

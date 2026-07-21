@@ -208,6 +208,7 @@ class PoirotTUI(App):
         Binding("ctrl+l", "clear_screen", "Clear", show=False),
         Binding("ctrl+p", "toggle_command_palette", "Commands", show=False),
         Binding("ctrl+n", "toggle_mcp_panel", "MCP", show=True, priority=True),
+        Binding("ctrl+b", "toggle_settings", "Settings", show=True, priority=True),
     ]
 
     def __init__(self, runtime: Any, provider: str | None = None, model: str | None = None) -> None:
@@ -380,6 +381,22 @@ class PoirotTUI(App):
         else:
             mcp_manager = getattr(self.runtime, "mcp_manager", None) if self.runtime else None
             self.push_screen(McpPanel(mcp_manager, self.runtime))
+
+    def action_toggle_settings(self) -> None:
+        """Ctrl+B 弹出/收起配置面板（编辑 API Key / Base URL，直写 .env）。"""
+        from pathlib import Path
+        from poirot.backend.app.tui.settings_screen import SettingsScreen
+
+        if isinstance(self.screen, SettingsScreen):
+            self.pop_screen()
+        else:
+            env_path = Path(__file__).parents[4] / ".env"
+            if not env_path.exists():
+                from rich.text import Text
+                conv = self.query_one(ConversationLog)
+                conv.write(Text(".env not found — run setup wizard first.", style="dim"))
+                return
+            self.push_screen(SettingsScreen(env_path))
 
     def _focus_conv_input(self) -> None:
         """聚焦对话输入框（切换布局/完成一轮后调用，确保可继续输入）。"""

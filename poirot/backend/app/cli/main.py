@@ -19,7 +19,6 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.styles import Style
 from rich.console import Console
-
 from poirot.backend.app.bootstrap import bootstrap_runtime, AppRuntime
 from poirot.backend.app.cli.banner import render_banner
 from poirot.backend.app.cli.command_completer import SlashCommandCompleter
@@ -33,6 +32,12 @@ from poirot.backend.agents.prompts import get_prompt_manager
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # 首次启动配置向导：.env 不存在时引导用户配置
+    from poirot.backend.app.cli.setup_wizard import ensure_config
+    if not ensure_config(_PROJECT_ROOT):
+        return 1
+    load_dotenv(_PROJECT_ROOT / ".env", override=True)
+
     parser = argparse.ArgumentParser(prog="poirot")
     parser.add_argument("--provider", default=None)
     parser.add_argument("--model", default=None)
