@@ -319,6 +319,50 @@ def _build_evolution_manager(skill_manager: Any, llm: Any, journal: Any) -> Any:
     )
 
 
+def _build_eval_layer(skill_manager: Any, llm: Any) -> Any:
+    """建 L3 EvalLayer 注入 SkillManager。
+
+    lazy import eval 模块（避免循环依赖）。
+    若 EvolutionManager 已装配，替换其 eval_bridge 为 RegistryEvalBridge。
+    """
+    from poirot.backend.agents.skill.eval import EvalLayer
+    from poirot.backend.agents.skill.eval.analyzers.contract_compiler import ContractCompiler
+    from poirot.backend.agents.skill.eval.analyzers.response_contract_checker import (
+        ResponseContractChecker,
+    )
+    from poirot.backend.agents.skill.eval.analyzers.skill_judgment_analyzer import (
+        SkillJudgmentAnalyzer,
+    )
+    from poirot.backend.agents.skill.eval.analyzers.task_quality_judge import (
+        TaskQualityJudge,
+    )
+    from poirot.backend.agents.skill.eval.registry import EvalRegistry, RegistryEvalBridge
+    from poirot.backend.agents.skill.eval.runtime_tracker import RuntimeTracker
+
+    cfg = skill_manager.config.eval_config
+    store = skill_manager.store
+
+    checker = ResponseContractChecker(ContractCompiler())
+    registry = EvalRegistry(checker)
+    bridge = RegistryEvalBridge(registry)
+
+    judgment_analyzer = SkillJudgmentAnalyzer(llm, store) if cfg.judgment_enabled else None
+    task_judge = TaskQualityJudge(llm, store) if cfg.task_judge_enabled else None
+    runtime_tracker = RuntimeTracker(store, cfg.degradation_delta)
+
+    # 替换 EvolutionManager 的 eval_bridge（若已装配）
+    evo = skill_manager.get_evolution_manager()
+    if evo is not None:
+        evo._eval_bridge = bridge
+
+    return EvalLayer(
+        bridge=bridge,
+        judgment_analyzer=judgment_analyzer,
+        task_judge=task_judge,
+        runtime_tracker=runtime_tracker,
+    )
+
+
 def bootstrap_runtime(
     expert_mode: bool = False,
     provider: str | None = None,
@@ -464,6 +508,15 @@ def bootstrap_runtime(
                     thread_journal.append("skill.evolve_loaded", {})
                 except Exception as exc:
                     thread_journal.append("skill.evolve_load_failed", {"error": str(exc)})
+                # L3 eval 装配：eval_config.enabled=true 时建 EvalLayer 注入
+                if skill_manager.config.eval_config.enabled:
+                    try:
+                        skill_manager.set_eval_layer(
+                            _build_eval_layer(skill_manager, researcher_model)
+                        )
+                        thread_journal.append("skill.eval_loaded", {})
+                    except Exception as exc:
+                        thread_journal.append("skill.eval_load_failed", {"error": str(exc)})
         else:
             thread_journal.append("skill.skipped", {"reason": "disabled or no skills dir"})
     except Exception as exc:
