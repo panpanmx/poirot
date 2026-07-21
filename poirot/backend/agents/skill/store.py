@@ -27,8 +27,13 @@ from poirot.backend.agents.skill.types import (
 
 if TYPE_CHECKING:
     from poirot.backend.agents.skill.evolution.types import EvolutionRecord
+    from poirot.backend.agents.skill.eval.types import (
+        EvalRun,
+        SkillJudgment as EvalSkillJudgment,
+        TaskQualityScore,
+    )
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS skill_records (
@@ -86,6 +91,41 @@ CREATE TABLE IF NOT EXISTS skill_evolutions (
     timestamp           TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_se_skill ON skill_evolutions(skill_name, timestamp);
+
+CREATE TABLE IF NOT EXISTS skill_eval_judgments (
+    judgment_id    TEXT PRIMARY KEY,
+    skill_id       TEXT NOT NULL,
+    skill_name     TEXT NOT NULL,
+    task_id        TEXT NOT NULL,
+    skill_applied  INTEGER NOT NULL,
+    deviation_note TEXT NOT NULL DEFAULT '',
+    timestamp      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sej_skill ON skill_eval_judgments(skill_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS task_quality_scores (
+    score_id         TEXT PRIMARY KEY,
+    task_id          TEXT NOT NULL,
+    task_completion  REAL NOT NULL,
+    response_quality REAL NOT NULL,
+    efficiency       REAL NOT NULL,
+    tool_usage       REAL NOT NULL,
+    overall_score    REAL NOT NULL,
+    rationale        TEXT NOT NULL DEFAULT '',
+    timestamp        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tqs_task ON task_quality_scores(task_id);
+
+CREATE TABLE IF NOT EXISTS skill_eval_runs (
+    eval_run_id   TEXT PRIMARY KEY,
+    eval_layer    TEXT NOT NULL,
+    skill_ids     TEXT NOT NULL,
+    candidate_id  TEXT,
+    baseline_id   TEXT,
+    result_json   TEXT NOT NULL DEFAULT '',
+    timestamp     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ser_layer ON skill_eval_runs(eval_layer, timestamp);
 """
 
 
@@ -110,6 +150,49 @@ def _migrate_v1_v2(conn: Any) -> None:
         timestamp           TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_se_skill ON skill_evolutions(skill_name, timestamp);
+    """)
+
+
+def _migrate_v2_v3(conn: Any) -> None:
+    """v2→v3: 加 L3 eval 三表（skill_eval_judgments / task_quality_scores / skill_eval_runs）。
+
+    _SCHEMA_SQL 已含此三表（IF NOT EXISTS 幂等），此函数确保存量 v2 DB 升级时建表。
+    """
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS skill_eval_judgments (
+        judgment_id    TEXT PRIMARY KEY,
+        skill_id       TEXT NOT NULL,
+        skill_name     TEXT NOT NULL,
+        task_id        TEXT NOT NULL,
+        skill_applied  INTEGER NOT NULL,
+        deviation_note TEXT NOT NULL DEFAULT '',
+        timestamp      TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sej_skill ON skill_eval_judgments(skill_id, timestamp);
+
+    CREATE TABLE IF NOT EXISTS task_quality_scores (
+        score_id         TEXT PRIMARY KEY,
+        task_id          TEXT NOT NULL,
+        task_completion  REAL NOT NULL,
+        response_quality REAL NOT NULL,
+        efficiency       REAL NOT NULL,
+        tool_usage       REAL NOT NULL,
+        overall_score    REAL NOT NULL,
+        rationale        TEXT NOT NULL DEFAULT '',
+        timestamp        TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tqs_task ON task_quality_scores(task_id);
+
+    CREATE TABLE IF NOT EXISTS skill_eval_runs (
+        eval_run_id   TEXT PRIMARY KEY,
+        eval_layer    TEXT NOT NULL,
+        skill_ids     TEXT NOT NULL,
+        candidate_id  TEXT,
+        baseline_id   TEXT,
+        result_json   TEXT NOT NULL DEFAULT '',
+        timestamp     TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ser_layer ON skill_eval_runs(eval_layer, timestamp);
     """)
 
 
@@ -203,10 +286,12 @@ class SQLiteSkillStore:
         """schema 版本链迁移。from_v → from_v+1 → ... → to_v。
 
         v1→v2: 加 skill_evolutions 表（Layer 2 实验记录）。
+        v2→v3: 加 skill_eval_judgments + task_quality_scores + skill_eval_runs 三表（Layer 3 eval）。
         新增版本时在 migrations 注册 (v, v+1) 迁移函数。
         """
         migrations: dict[tuple[int, int], Any] = {
             (1, 2): _migrate_v1_v2,
+            (2, 3): _migrate_v2_v3,
         }
         v = from_v
         while v < to_v:
@@ -589,6 +674,119 @@ class SQLiteSkillStore:
                 (skill_name, limit),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ── eval 持久化（Layer 3 写，本层持久化；duck-type，L1 不 runtime import L3）──
+
+    def save_judgment(self, judgment: "EvalSkillJudgment") -> str:
+        """写 skill_eval_judgments 表。INSERT OR REPLACE。持锁。"""
+        with self._mu:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO skill_eval_judgments
+                   (judgment_id, skill_id, skill_name, task_id,
+                    skill_applied, deviation_note, timestamp)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    judgment.judgment_id,
+                    judgment.skill_id,
+                    judgment.skill_name,
+                    judgment.task_id,
+                    1 if judgment.skill_applied else 0,
+                    judgment.deviation_note,
+                    judgment.timestamp or utc_now_iso(),
+                ),
+            )
+            self._conn.commit()
+            return judgment.judgment_id
+
+    def get_judgments(
+        self, skill_id: str, limit: int = 20,
+    ) -> list["EvalSkillJudgment"]:
+        """回溯 skill 的 SkillJudgment 历史。按 timestamp 降序。"""
+        from poirot.backend.agents.skill.eval.types import SkillJudgment
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT * FROM skill_eval_judgments WHERE skill_id=? "
+                "ORDER BY timestamp DESC LIMIT ?",
+                (skill_id, limit),
+            ).fetchall()
+        return [
+            SkillJudgment(
+                judgment_id=r["judgment_id"],
+                skill_id=r["skill_id"],
+                skill_name=r["skill_name"],
+                task_id=r["task_id"],
+                skill_applied=bool(r["skill_applied"]),
+                deviation_note=r["deviation_note"],
+                timestamp=r["timestamp"],
+            )
+            for r in rows
+        ]
+
+    def save_task_score(self, score: "TaskQualityScore") -> str:
+        """写 task_quality_scores 表。INSERT OR REPLACE。持锁。"""
+        with self._mu:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO task_quality_scores
+                   (score_id, task_id, task_completion, response_quality,
+                    efficiency, tool_usage, overall_score, rationale, timestamp)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    score.score_id,
+                    score.task_id,
+                    score.task_completion,
+                    score.response_quality,
+                    score.efficiency,
+                    score.tool_usage,
+                    score.overall_score,
+                    score.rationale,
+                    score.timestamp or utc_now_iso(),
+                ),
+            )
+            self._conn.commit()
+            return score.score_id
+
+    def get_task_scores(self, task_id: str) -> "TaskQualityScore | None":
+        """查 task 的 TaskQualityScore。"""
+        from poirot.backend.agents.skill.eval.types import TaskQualityScore
+        with self._mu:
+            row = self._conn.execute(
+                "SELECT * FROM task_quality_scores WHERE task_id=?",
+                (task_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return TaskQualityScore(
+            score_id=row["score_id"],
+            task_id=row["task_id"],
+            task_completion=row["task_completion"],
+            response_quality=row["response_quality"],
+            efficiency=row["efficiency"],
+            tool_usage=row["tool_usage"],
+            overall_score=row["overall_score"],
+            rationale=row["rationale"],
+            timestamp=row["timestamp"],
+        )
+
+    def save_eval_run(self, run: "EvalRun") -> str:
+        """写 skill_eval_runs 表。INSERT OR REPLACE。持锁。"""
+        with self._mu:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO skill_eval_runs
+                   (eval_run_id, eval_layer, skill_ids, candidate_id,
+                    baseline_id, result_json, timestamp)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    run.eval_run_id,
+                    run.eval_layer,
+                    json.dumps(list(run.skill_ids)),
+                    run.candidate_id,
+                    run.baseline_id,
+                    run.result_json,
+                    run.timestamp or utc_now_iso(),
+                ),
+            )
+            self._conn.commit()
+            return run.eval_run_id
 
     # ── helpers ──────────────────────────────────────────────
 

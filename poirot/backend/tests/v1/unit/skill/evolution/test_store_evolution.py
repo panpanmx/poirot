@@ -110,18 +110,18 @@ def test_record_evolution_replace_same_id(tmp_path):
 
 
 def test_migration_v1_to_v2(tmp_path):
-    """v1 DB（无 skill_evolutions）开新代码 → 迁移 v1→v2 建表。"""
+    """v1 DB（无 skill_evolutions）开新代码 → 迁移 v1→v2→v3 建表。"""
     db = tmp_path / "v1.db"
-    # 先用新代码建到 v2
+    # 先用新代码建到 v3
     store = SQLiteSkillStore(db)
     store._conn.execute("DROP TABLE skill_evolutions")
     store._conn.execute("PRAGMA user_version = 1")
     store._conn.commit()
     store.close()
 
-    # 重新开 → _init_schema 应迁移 v1→v2
+    # 重新开 → _init_schema 应迁移 v1→v2→v3
     store2 = SQLiteSkillStore(db)
-    assert store2._conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert store2._conn.execute("PRAGMA user_version").fetchone()[0] == 3
     # skill_evolutions 表存在（迁移重建）
     store2.record_evolution(_record("e1"))
     assert len(store2.get_evolution_history("sv")) == 1
@@ -129,11 +129,11 @@ def test_migration_v1_to_v2(tmp_path):
 
 
 def test_migration_idempotent(tmp_path):
-    """重复实例化（已 v2）不重复迁移。"""
+    """重复实例化（已 v3）不重复迁移。"""
     db = tmp_path / "e.db"
     SQLiteSkillStore(db).close()
     store2 = SQLiteSkillStore(db)
-    assert store2._conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert store2._conn.execute("PRAGMA user_version").fetchone()[0] == 3
     # 表仍可用
     store2.record_evolution(_record("e1"))
     assert len(store2.get_evolution_history("sv")) == 1
@@ -141,9 +141,9 @@ def test_migration_idempotent(tmp_path):
 
 
 def test_fresh_db_has_skill_evolutions_table(tmp_path):
-    """全新 DB：_SCHEMA_SQL 建表（v2）。"""
+    """全新 DB：_SCHEMA_SQL 建表（v3）。"""
     store = SQLiteSkillStore(tmp_path / "fresh.db")
-    assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 3
     tables = {r[0] for r in store._conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
