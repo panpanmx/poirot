@@ -193,7 +193,7 @@ class DockerSandboxProvider(SandboxProvider):
         if info is not None:
             alive = self._backend.is_alive(info)
             if alive is False:
-                self._drop_unhealthy(sid, "in-process cache health check failed")
+                self._drop_unhealthy(sid, "in-process cache health check failed", expected_info=info)
                 return None
         with self._lock:
             self._last_activity[sid] = time.time()
@@ -208,7 +208,7 @@ class DockerSandboxProvider(SandboxProvider):
             info, _ = self._warm_pool[sandbox_id]
         alive = self._backend.is_alive(info)
         if alive is False:
-            self._drop_unhealthy(sandbox_id, "warm pool health check failed")
+            self._drop_unhealthy(sandbox_id, "warm pool health check failed", expected_info=info)
             return None
         sandbox = self._make_sandbox(sandbox_id, info)
         with self._lock:
@@ -265,7 +265,14 @@ class DockerSandboxProvider(SandboxProvider):
                 self._thread_locks[key] = threading.Lock()
             return self._thread_locks[key]
 
-    def _drop_unhealthy(self, sandbox_id: str, reason: str) -> None:
+    def _drop_unhealthy(
+        self, sandbox_id: str, reason: str, expected_info: SandboxInfo | None = None,
+    ) -> None:
+        """移除不健康 sandbox + 销毁容器。
+
+        S7: destroy 前二次 discover 校验——若别线程已用同 ID 建新容器
+        （new_info != expected_info），跳过 destroy 避免误杀。
+        """
         with self._lock:
             sandbox = self._sandboxes.pop(sandbox_id, None)
             info = self._sandbox_infos.pop(sandbox_id, None)
@@ -282,10 +289,22 @@ class DockerSandboxProvider(SandboxProvider):
             except Exception:
                 pass
         if info:
+            # S7: destroy 前二次探活——别线程可能已用同 ID 建新容器
             try:
-                self._backend.destroy(info)
+                current_info = self._backend.discover(sandbox_id)
             except Exception:
-                pass
+                current_info = None  # discover 失败→按"容器状态未知"处理，继续 destroy
+            if current_info is not None and expected_info is not None and current_info != expected_info:
+                logger.warning(
+                    f"Skip destroy for {sandbox_id}: container changed "
+                    f"(expected {expected_info.container_name}, "
+                    f"current {current_info.container_name})"
+                )
+            else:
+                try:
+                    self._backend.destroy(info)
+                except Exception:
+                    pass
         logger.warning(f"Dropped unhealthy sandbox {sandbox_id}: {reason}")
 
     # ── Layer 2: cross-process lock + discover/create ────────────
@@ -430,10 +449,22 @@ class DockerSandboxProvider(SandboxProvider):
             except Exception:
                 pass
         if info:
+            # S7: destroy 前二次探活——避免误杀别线程新建的同 ID 容器
             try:
-                self._backend.destroy(info)
+                current_info = self._backend.discover(sandbox_id)
             except Exception:
-                pass
+                current_info = None
+            if current_info is not None and current_info != info:
+                logger.warning(
+                    f"Skip destroy for {sandbox_id}: container changed "
+                    f"(expected {info.container_name}, "
+                    f"current {current_info.container_name})"
+                )
+            else:
+                try:
+                    self._backend.destroy(info)
+                except Exception:
+                    pass
 
     def _start_idle_checker(self) -> None:
         self._idle_checker_thread = threading.Thread(

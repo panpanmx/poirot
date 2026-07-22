@@ -288,6 +288,59 @@ class TestDropUnhealthy:
         p._drop_unhealthy("abc", "test")  # should not raise
 
 
+class TestDropUnhealthyExpectedInfo:
+    """S7: destroy 前二次 discover 校验，避免误杀新容器。"""
+
+    def test_skip_destroy_when_container_changed(self) -> None:
+        """expected_info != current discover → 跳过 destroy。"""
+        p = _make_provider()
+        old_info = _make_info("abc", "http://localhost:9000")
+        new_info = _make_info("abc", "http://localhost:9001")  # 同 ID 不同 URL
+        p._sandbox_infos["abc"] = old_info
+        p._backend.discover = MagicMock(return_value=new_info)
+        p._backend.destroy = MagicMock()
+
+        p._drop_unhealthy("abc", "test", expected_info=old_info)
+
+        p._backend.destroy.assert_not_called()  # 跳过 destroy
+
+    def test_destroy_when_container_unchanged(self) -> None:
+        """expected_info == current discover → 正常 destroy。"""
+        p = _make_provider()
+        info = _make_info("abc", "http://localhost:9000")
+        p._sandbox_infos["abc"] = info
+        p._backend.discover = MagicMock(return_value=info)  # 同 info
+        p._backend.destroy = MagicMock()
+
+        p._drop_unhealthy("abc", "test", expected_info=info)
+
+        p._backend.destroy.assert_called_once_with(info)
+
+    def test_destroy_when_container_gone(self) -> None:
+        """discover 返回 None（容器已不在）→ 正常 destroy expected_info。"""
+        p = _make_provider()
+        info = _make_info("abc")
+        p._sandbox_infos["abc"] = info
+        p._backend.discover = MagicMock(return_value=None)
+        p._backend.destroy = MagicMock()
+
+        p._drop_unhealthy("abc", "test", expected_info=info)
+
+        p._backend.destroy.assert_called_once_with(info)
+
+    def test_no_expected_info_always_destroys(self) -> None:
+        """不传 expected_info（向后兼容）→ 始终 destroy。"""
+        p = _make_provider()
+        info = _make_info("abc")
+        p._sandbox_infos["abc"] = info
+        p._backend.discover = MagicMock(return_value=_make_info("abc", "http://other:9999"))
+        p._backend.destroy = MagicMock()
+
+        p._drop_unhealthy("abc", "test")  # 无 expected_info
+
+        p._backend.destroy.assert_called_once_with(info)
+
+
 class TestGetThreadLock:
     def test_same_thread_same_lock(self) -> None:
         p = _make_provider()
