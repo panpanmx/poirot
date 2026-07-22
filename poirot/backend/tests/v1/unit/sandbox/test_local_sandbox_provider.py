@@ -93,6 +93,85 @@ class TestLRU:
         assert provider.get(sid2) is not None
         assert provider.get(sid3) is not None
 
+
+class TestConcurrencySafety:
+    """严重1 修复验证：多线程并发 acquire 无状态损坏。"""
+
+    def test_concurrent_acquire_no_error(self) -> None:
+        """10 线程 × 100 acquire 并发压测，无异常 + 状态一致。"""
+        import threading
+
+        provider = LocalSandboxProvider(lru_size=50)
+        errors: list[Exception] = []
+
+        def worker(thread_idx: int) -> None:
+            try:
+                for i in range(100):
+                    sid = provider.acquire(f"thread-{thread_idx}", user_id=f"user-{i % 5}")
+                    sandbox = provider.get(sid)
+                    assert sandbox is not None, f"get returned None for {sid}"
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"concurrent errors: {errors}"
+
+    def test_concurrent_acquire_same_thread_id(self) -> None:
+        """多线程同时 acquire 同一 thread_id，返回相同 sandbox_id。"""
+        import threading
+
+        provider = LocalSandboxProvider()
+        results: list[str] = []
+        lock = threading.Lock()
+
+        def worker() -> None:
+            sid = provider.acquire("shared-thread", user_id="shared-user")
+            with lock:
+                results.append(sid)
+
+        threads = [threading.Thread(target=worker) for _ in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(results) == 20
+        assert all(r == results[0] for r in results), "same thread_id should get same sandbox_id"
+
+    def test_concurrent_reset_acquire(self) -> None:
+        """reset 与 acquire 并发不崩溃。"""
+        import threading
+
+        provider = LocalSandboxProvider()
+        errors: list[Exception] = []
+
+        def acquirer() -> None:
+            try:
+                for i in range(50):
+                    provider.acquire(f"t-{i}", user_id="u")
+            except Exception as exc:
+                errors.append(exc)
+
+        def resetter() -> None:
+            try:
+                for _ in range(50):
+                    provider.reset()
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=acquirer)] + [threading.Thread(target=resetter)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"reset/acquire race errors: {errors}"
+
     def test_lru_touch_moves_to_end(self, provider: LocalSandboxProvider) -> None:
         provider = LocalSandboxProvider(lru_size=2)
         sid1 = provider.acquire("t1", user_id="u1")
