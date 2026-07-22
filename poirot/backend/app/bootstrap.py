@@ -419,6 +419,14 @@ def bootstrap_runtime(
 
     # MCP tool loading — 通过 McpManager 门面加载，配置化 + 熔断器 + fallback。
     tools: dict[str, Any] = {}
+
+    # builtin 工具（ddg_search / read_snapshot）——始终注册，MCP 未启用时的唯一搜索来源。
+    # 之前遗漏此调用导致 MCP 关闭时 agent 无任何搜索工具可用。
+    builtin_tools = get_available_tools(groups=["core"])
+    for t in builtin_tools:
+        tools[t.name] = t
+    thread_journal.append("builtin.tools_loaded", {"tools": list(tools.keys())})
+
     mcp_manager = None
     mcp_audit_middleware = None
     if _check_node_available():
