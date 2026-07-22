@@ -80,6 +80,7 @@ def _build_sandbox_config() -> SandboxConfig:
     """从 POIROT_SANDBOX_* 环境变量构造 SandboxConfig（懒加载，use 为空=禁用）。"""
     return SandboxConfig(
         use=os.environ.get("POIROT_SANDBOX_USE", ""),
+        allow_host_bash=os.environ.get("POIROT_SANDBOX_ALLOW_HOST_BASH", "true").lower() != "false",
         image=os.environ.get("POIROT_SANDBOX_IMAGE", "all-in-one-sandbox:latest"),
         port=int(os.environ.get("POIROT_SANDBOX_PORT", "18000") or "18000"),
         container_prefix=os.environ.get("POIROT_SANDBOX_CONTAINER_PREFIX", "poirot-sandbox"),

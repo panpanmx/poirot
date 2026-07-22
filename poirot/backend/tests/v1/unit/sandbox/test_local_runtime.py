@@ -11,6 +11,7 @@ from poirot.backend.agents.sandbox.exceptions import (
     SandboxError,
     SandboxFileNotFoundError,
     SandboxPermissionError,
+    SandboxRuntimeError,
 )
 from poirot.backend.agents.sandbox.runtimes.local_runtime import LocalRuntime
 from poirot.backend.agents.sandbox.types import GrepMatch
@@ -39,6 +40,23 @@ class TestExecCommand:
         with pytest.raises(SandboxCommandError) as exc_info:
             runtime.exec_command(f"{long_cmd}; exit 1")
         assert "..." in exc_info.value.details["command"]
+
+
+class TestAllowHostBashGate:
+    """S2 安全加固：allow_host_bash=False 时 exec_command 被拒。"""
+
+    def test_disabled_raises_runtime_error(self) -> None:
+        rt = LocalRuntime(allow_host_bash=False)
+        with pytest.raises(SandboxRuntimeError, match="host bash is disabled"):
+            rt.exec_command("echo hello")
+
+    def test_enabled_executes_normally(self) -> None:
+        rt = LocalRuntime(allow_host_bash=True)
+        assert rt.exec_command("echo hello").strip() == "hello"
+
+    def test_default_is_enabled(self) -> None:
+        rt = LocalRuntime()
+        assert rt.exec_command("echo hello").strip() == "hello"
 
 
 class TestReadFile:

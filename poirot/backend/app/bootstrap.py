@@ -479,7 +479,10 @@ def bootstrap_runtime(
             register_sandbox_shutdown,
         )
 
-        sandbox_tools = make_sandbox_tools(sandbox_provider)
+        sandbox_tools = make_sandbox_tools(
+            sandbox_provider,
+            allow_host_bash=getattr(config.sandbox, "allow_host_bash", True),
+        )
         register_sandbox_shutdown(sandbox_provider)
         artifact_server = ArtifactServer()
         artifact_server.start()

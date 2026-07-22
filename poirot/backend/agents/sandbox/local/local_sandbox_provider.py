@@ -51,6 +51,9 @@ class LocalSandboxProvider(SandboxProvider):
         self._lru_size = lru_size
         self._sandboxes: OrderedDict[str, Sandbox] = OrderedDict()
         self._lock = threading.Lock()
+        self._allow_host_bash = True
+        if sandbox_config is not None:
+            self._allow_host_bash = getattr(sandbox_config, "allow_host_bash", True)
 
     def acquire(
         self, thread_id: str | None = None, *, user_id: str | None = None
@@ -67,7 +70,7 @@ class LocalSandboxProvider(SandboxProvider):
                 self._sandboxes.move_to_end(sandbox_id)
                 return sandbox_id
 
-            runtime = LocalRuntime()
+            runtime = LocalRuntime(allow_host_bash=self._allow_host_bash)
             translator = LocalPathTranslator(self._path_mappings)
             guard = LocalSecurityGuard(self._path_mappings)
             sandbox = Sandbox(sandbox_id, runtime, translator, guard)

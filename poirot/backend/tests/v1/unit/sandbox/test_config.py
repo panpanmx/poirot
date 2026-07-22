@@ -16,9 +16,9 @@ class TestSandboxConfig:
         config = SandboxConfig()
         assert config.use == ""
 
-    def test_default_allow_host_bash_false(self) -> None:
+    def test_default_allow_host_bash_true(self) -> None:
         config = SandboxConfig()
-        assert config.allow_host_bash is False
+        assert config.allow_host_bash is True
 
     def test_default_mounts_empty(self) -> None:
         config = SandboxConfig()

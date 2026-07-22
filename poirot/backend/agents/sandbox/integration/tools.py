@@ -144,20 +144,24 @@ def _make_str_replace_tool(provider: SandboxProvider) -> BaseTool:
     return str_replace_tool
 
 
-def make_sandbox_tools(provider: SandboxProvider) -> list[BaseTool]:
+def make_sandbox_tools(provider: SandboxProvider, allow_host_bash: bool = True) -> list[BaseTool]:
     """工厂：构造 sandbox 工具集，闭包捕获 provider。
 
     返回 6 个 @tool：bash / read_file / write_file / list_dir / str_replace / present_files。
     工具内部用 ContextVar get_sandbox_id 获取 sandbox_id + provider.get 获取 Sandbox。
+    allow_host_bash=False 时不注册 bash 工具（S2 安全加固）。
     """
-    return [
-        _make_bash_tool(provider),
+    tools = []
+    if allow_host_bash:
+        tools.append(_make_bash_tool(provider))
+    tools.extend([
         _make_read_file_tool(provider),
         _make_write_file_tool(provider),
         _make_list_dir_tool(provider),
         _make_str_replace_tool(provider),
         _make_present_files_tool(provider),
-    ]
+    ])
+    return tools
 
 
 def _make_present_files_tool(provider: SandboxProvider) -> BaseTool:

@@ -9,6 +9,7 @@ from poirot.backend.agents.sandbox.exceptions import (
     SandboxCommandError,
     SandboxFileNotFoundError,
     SandboxPermissionError,
+    SandboxRuntimeError,
 )
 from poirot.backend.agents.sandbox.types import GrepMatch
 from poirot.backend.agents.sandbox.utils.search import (
@@ -41,14 +42,21 @@ class LocalRuntime:
 
     INVARIANT:
     - exec_command 用 subprocess.run(shell=True)，捕获 CalledProcessError → SandboxCommandError
-    - shell=True 接受（Grill #6：LocalSandbox 非安全边界，安全由 Guard 负责）
+    - allow_host_bash=False 时 exec_command 直接 raise SandboxPermissionError（S2 安全加固）
     - 文件操作捕获 FileNotFoundError → SandboxFileNotFoundError，PermissionError → SandboxPermissionError
     - grep 用 IGNORE_PATTERNS 过滤 + DEFAULT_MAX_FILE_SIZE_BYTES 跳过大文件
     - close no-op（subprocess 无持久连接）
     - 无 write_file 80KB 限制（Grill #7：裸执行不关心 LLM chunk 大小，Stage 3 工具层加）
     """
 
+    def __init__(self, allow_host_bash: bool = True) -> None:
+        self._allow_host_bash = allow_host_bash
+
     def exec_command(self, command: str) -> str:
+        if not self._allow_host_bash:
+            raise SandboxRuntimeError(
+                "host bash is disabled (POIROT_SANDBOX_ALLOW_HOST_BASH=false)"
+            )
         try:
             result = subprocess.run(
                 command,

@@ -22,7 +22,7 @@ class SandboxConfig:
     """
 
     use: str = ""
-    allow_host_bash: bool = False
+    allow_host_bash: bool = True
     storage_path: str = ""
     mounts: list[SandboxMountConfig] = field(default_factory=list)
     environment: dict[str, str] = field(default_factory=dict)
