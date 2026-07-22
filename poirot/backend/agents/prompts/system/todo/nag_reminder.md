@@ -1,5 +1,5 @@
-<system_reminder>
-已超过 ${steps} 步未更新 todo，请检查以下任务是否需要补充或更新状态：
+You have not updated your todos for over ${steps} steps. Please check whether the following tasks need to be supplemented or have their status updated:
 
-${lines}
-</system_reminder>
+${todos}
+
+Please continue tracking and call write_todos to update status after each step completion.
