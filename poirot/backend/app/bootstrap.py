@@ -23,6 +23,8 @@ from poirot.backend.agents.leader.factory import make_lead_agent
 from poirot.backend.agents.reporting.markdown_reporter import MarkdownReporter
 from poirot.backend.agents.runtime.run_manager import RunManager
 from poirot.backend.agents.agent_tools.available import get_available_tools, select_search_tool
+from poirot.backend.agents.multiagent.bootstrap import MultiAgentSetup, setup_multiagent
+from poirot.backend.agents.multiagent.config import load_multiagent_config
 
 _PROJECT_ROOT = Path(__file__).parents[3]
 _CST = timezone(timedelta(hours=8))
@@ -86,6 +88,7 @@ class AppRuntime:
     mcp_manager: Any = None
     artifact_server: Any = None
     skill_manager: Any = None
+    multiagent_setup: MultiAgentSetup | None = None
 
     def run_question(
         self,
@@ -142,6 +145,8 @@ class AppRuntime:
             mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
             skill_injection_middleware=self.skill_manager.get_injection_middleware() if self.skill_manager else None,
             skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
+            specialist_tools=list(self.multiagent_setup.specialist_tools) if self.multiagent_setup else None,
+            orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
         )
         self.thread_journal.append("mode.switched", {
             "expert_mode": expert_mode,
@@ -159,6 +164,7 @@ class AppRuntime:
             mcp_manager=self.mcp_manager,
             artifact_server=self.artifact_server,
             skill_manager=self.skill_manager,
+            multiagent_setup=self.multiagent_setup,
         )
 
     def reload_mcp_tools(self) -> AppRuntime:
@@ -178,6 +184,8 @@ class AppRuntime:
             mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
             skill_injection_middleware=self.skill_manager.get_injection_middleware() if self.skill_manager else None,
             skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
+            specialist_tools=list(self.multiagent_setup.specialist_tools) if self.multiagent_setup else None,
+            orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
         )
         self.thread_journal.append("mcp.tools_reloaded", {"thread_id": self.thread_id})
         return AppRuntime(
@@ -192,6 +200,7 @@ class AppRuntime:
             mcp_manager=self.mcp_manager,
             artifact_server=self.artifact_server,
             skill_manager=self.skill_manager,
+            multiagent_setup=self.multiagent_setup,
         )
 
     def switch_model(self, provider: str, model: str | None = None) -> AppRuntime:
@@ -228,6 +237,8 @@ class AppRuntime:
             mcp_audit_middleware=self.mcp_manager.get_audit_middleware() if self.mcp_manager else None,
             skill_injection_middleware=self.skill_manager.get_injection_middleware() if self.skill_manager else None,
             skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
+            specialist_tools=list(self.multiagent_setup.specialist_tools) if self.multiagent_setup else None,
+            orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
         )
         self.thread_journal.append("model.switched", {
             "provider": provider,
@@ -246,6 +257,7 @@ class AppRuntime:
             mcp_manager=self.mcp_manager,
             artifact_server=self.artifact_server,
             skill_manager=self.skill_manager,
+            multiagent_setup=self.multiagent_setup,
         )
 
 
@@ -534,6 +546,11 @@ def bootstrap_runtime(
         thread_journal.append("skill.load_failed", {"error": str(exc)})
 
     all_tools = {**tools, **{t.name: t for t in sandbox_tools}}
+
+    # Multi-Agent orchestration 装配 — enabled=false 时返空 setup（lead agent 行为不变）
+    ma_config = load_multiagent_config()
+    ma_setup = setup_multiagent(ma_config)
+
     registry = CapabilityRegistry(
         models={"researcher": researcher_model, "reporter": reporter_model},
         tools=all_tools,
@@ -541,6 +558,8 @@ def bootstrap_runtime(
         artifact_store=LocalArtifactStore(),
         sandbox_provider=sandbox_provider,
         skill_store=skill_manager.store if skill_manager else None,
+        specialist_registry=ma_setup.specialist_registry,
+        subagent_provider=ma_setup.subagent_provider,
     )
     leader_agent = make_lead_agent(
         expert_mode=expert_mode,
@@ -551,6 +570,8 @@ def bootstrap_runtime(
         mcp_audit_middleware=mcp_audit_middleware,
         skill_injection_middleware=skill_injection_middleware,
         skill_metrics_middleware=skill_metrics_middleware,
+        specialist_tools=list(ma_setup.specialist_tools) if ma_setup.specialist_tools else None,
+        orchestration_middleware=ma_setup.orchestration_middleware,
     )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,
@@ -570,4 +591,5 @@ def bootstrap_runtime(
         mcp_manager=mcp_manager,
         artifact_server=artifact_server,
         skill_manager=skill_manager,
+        multiagent_setup=ma_setup,
     )

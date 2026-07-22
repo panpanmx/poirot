@@ -87,6 +87,6 @@ class TestThreadStateInitial:
         expected_keys = {
             "messages", "user_input", "observations", "sources",
             "citations", "artifacts", "reflection_items", "errors",
-            "metadata", "governance", "sandbox",
+            "metadata", "governance", "sandbox", "orchestration",
         }
         assert set(state.keys()) == expected_keys

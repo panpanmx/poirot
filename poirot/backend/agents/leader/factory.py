@@ -38,6 +38,7 @@ def _build_middlewares(
     mcp_audit_middleware: Any = None,
     skill_injection_middleware: Any = None,
     skill_metrics_middleware: Any = None,
+    orchestration_middleware: Any = None,
 ) -> list:
     """全模式全挂 middleware，参数化控制行为差异。
 
@@ -89,6 +90,10 @@ def _build_middlewares(
         # 如需恢复，取消下行注释 + 确保 import 存在。
         # LoopDetectionMiddleware(),
         ToolCallMiddleware(),
+    ])
+    if orchestration_middleware is not None:
+        middlewares.append(orchestration_middleware)
+    middlewares.extend([
         EvidenceMiddleware(),
         TodoMiddleware(enforce_completion=expert_mode),
         ReflectionMiddleware(
@@ -112,6 +117,8 @@ def make_lead_agent(
     mcp_audit_middleware: Any = None,
     skill_injection_middleware: Any = None,
     skill_metrics_middleware: Any = None,
+    specialist_tools: list[BaseTool] | None = None,
+    orchestration_middleware: Any = None,
 ) -> Any:
     """App-layer factory: expert_flag 参数化装配 graph。
 
@@ -159,12 +166,17 @@ def make_lead_agent(
     for tool in registry.tools.values():
         if isinstance(tool, BaseTool) and tool not in tools:
             tools.append(tool)
+    # multiagent specialist tools（delegate_to_*）
+    if specialist_tools:
+        for tool in specialist_tools:
+            if isinstance(tool, BaseTool) and tool not in tools:
+                tools.append(tool)
 
     return LeaderAgent(
         graph=create_agent(
             model=model,
             tools=tools or None,
-            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server, mcp_audit_middleware, skill_injection_middleware, skill_metrics_middleware),
+            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server, mcp_audit_middleware, skill_injection_middleware, skill_metrics_middleware, orchestration_middleware),
             system_prompt=apply_prompt_template(expert_mode=resolved_expert),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),
