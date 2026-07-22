@@ -23,6 +23,7 @@ from poirot.backend.agents.sandbox.docker.executor import (
     LocalDockerExecutor,
 )
 from poirot.backend.agents.sandbox.types import PathMapping, SandboxInfo
+from poirot.backend.agents.sandbox.utils.sandbox_id import validate_sandbox_id
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,7 @@ class LocalContainerBackend(SandboxBackend):
         *,
         user_id: str | None = None,
     ) -> SandboxInfo:
+        validate_sandbox_id(sandbox_id)
         name = self._container_name(sandbox_id)
         existing = self.discover(sandbox_id)
         if existing is not None:
@@ -232,6 +234,7 @@ class LocalContainerBackend(SandboxBackend):
 
     def discover(self, sandbox_id: str) -> SandboxInfo | None:
         """按确定性 ID 查已有实例。跨进程恢复用。"""
+        validate_sandbox_id(sandbox_id)
         name = self._container_name(sandbox_id)
         try:
             result = self._executor.run(

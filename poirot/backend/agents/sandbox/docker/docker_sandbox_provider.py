@@ -33,6 +33,7 @@ from poirot.backend.agents.sandbox.translators.identity_translator import (
     IdentityTranslator,
 )
 from poirot.backend.agents.sandbox.types import PathMapping, SandboxInfo
+from poirot.backend.agents.sandbox.utils.sandbox_id import validate_sandbox_id
 
 logger = logging.getLogger(__name__)
 
@@ -290,6 +291,7 @@ class DockerSandboxProvider(SandboxProvider):
     # ── Layer 2: cross-process lock + discover/create ────────────
 
     def _discover_or_create(self, thread_id: str, sandbox_id: str, user_id: str) -> str:
+        validate_sandbox_id(sandbox_id)
         lock_path = self._sandbox_root / f"{sandbox_id}.lock"
         lock_file = open_lock_file(lock_path)
         try:
@@ -308,6 +310,7 @@ class DockerSandboxProvider(SandboxProvider):
     async def _discover_or_create_async(
         self, thread_id: str, sandbox_id: str, user_id: str,
     ) -> str:
+        validate_sandbox_id(sandbox_id)
         lock_path = self._sandbox_root / f"{sandbox_id}.lock"
         lock_file = await asyncio.to_thread(open_lock_file, lock_path)
         try:

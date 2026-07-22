@@ -51,7 +51,7 @@ class TestDetectRuntime:
 class TestContainerName:
     def test_format(self) -> None:
         p = _make_backend()
-        assert p._container_name("abc123") == "test-sb-abc123"
+        assert p._container_name("abc12345") == "test-sb-abc12345"
 
 
 class TestFormatMount:
@@ -70,6 +70,27 @@ class TestFormatMount:
     def test_container_readonly(self) -> None:
         result = _format_mount("container", "/host/path", "/container/path", True)
         assert result == ["-v", "/host/path:/container/path:ro"]
+
+
+class TestSandboxIdValidation:
+    """S6: create/discover 入口校验 sandbox_id 格式。"""
+
+    def test_create_rejects_invalid_id(self) -> None:
+        backend = _make_backend()
+        with pytest.raises(ValueError, match="invalid sandbox_id"):
+            backend.create("t1", "../../etc")
+
+    def test_discover_rejects_invalid_id(self) -> None:
+        backend = _make_backend()
+        with pytest.raises(ValueError, match="invalid sandbox_id"):
+            backend.discover("../../../")
+
+    def test_create_accepts_valid_id(self) -> None:
+        """合法 id 不在入口抛 ValueError（后续 docker 不可用会抛其他异常）。"""
+        backend = _make_backend()
+        with patch.object(backend, "_start_container", side_effect=RuntimeError("docker not running")):
+            with pytest.raises(RuntimeError, match="docker not running"):
+                backend.create("t1", "a1b2c3d4")
 
 
 class TestParseDockerTimestamp:
@@ -127,10 +148,10 @@ class TestCreate:
             _completed(stdout="container123\n", returncode=0),  # docker run
         ]
         p = _make_backend()
-        info = p.create("thread-1", "abc123")
-        assert info.sandbox_id == "abc123"
+        info = p.create("thread-1", "abc12345")
+        assert info.sandbox_id == "abc12345"
         assert "9090" in info.sandbox_url
-        assert info.container_name == "test-sb-abc123"
+        assert info.container_name == "test-sb-abc12345"
         assert info.container_id == "container123"
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend.subprocess.run")
@@ -141,7 +162,7 @@ class TestCreate:
             _completed(stdout="0.0.0.0:9090\n", returncode=0),  # docker port
         ]
         p = _make_backend()
-        info = p.create("thread-1", "abc123")
+        info = p.create("thread-1", "abc12345")
         assert info.sandbox_url == "http://localhost:9090"
         # _start_container NOT called (only 2 subprocess calls: inspect + port)
         assert mock_run.call_count == 2
@@ -157,7 +178,7 @@ class TestCreate:
             _completed(stdout="container456\n", returncode=0),  # _start_container success
         ]
         p = _make_backend()
-        info = p.create("thread-1", "abc123")
+        info = p.create("thread-1", "abc12345")
         assert "9091" in info.sandbox_url
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend._get_free_port", return_value=9090)
@@ -170,7 +191,7 @@ class TestCreate:
             _completed(stdout="0.0.0.0:9090\n", returncode=0),  # docker port
         ]
         p = _make_backend()
-        info = p.create("thread-1", "abc123")
+        info = p.create("thread-1", "abc12345")
         assert info.sandbox_url == "http://localhost:9090"
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend._get_free_port")
@@ -184,7 +205,7 @@ class TestCreate:
         mock_run.side_effect = side_effects
         p = _make_backend()
         with pytest.raises(RuntimeError, match="all candidate ports"):
-            p.create("thread-1", "abc123")
+            p.create("thread-1", "abc12345")
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend._get_free_port", return_value=9090)
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend.subprocess.run")
@@ -194,14 +215,14 @@ class TestCreate:
             _completed(stdout="cid\n", returncode=0),  # docker run
         ]
         p = _make_backend()
-        p.create("thread-1", "abc123")
+        p.create("thread-1", "abc12345")
         run_cmd = mock_run.call_args_list[1].args[0]
         assert "--rm" in run_cmd
         assert "-d" in run_cmd
         assert "--name" in run_cmd
-        assert "test-sb-abc123" in run_cmd
+        assert "test-sb-abc12345" in run_cmd
         assert "-e" in run_cmd
-        assert "SANDBOX_ID=abc123" in run_cmd
+        assert "SANDBOX_ID=abc12345" in run_cmd
         assert "THREAD_ID=thread-1" in run_cmd
         assert "test-image:latest" in run_cmd
 
@@ -213,12 +234,12 @@ class TestCreate:
             _completed(stdout="cid\n", returncode=0),  # docker run
         ]
         p = _make_backend(sandbox_root="/tmp/poirot-sandbox")
-        p.create("thread-1", "abc123")
+        p.create("thread-1", "abc12345")
         run_cmd = mock_run.call_args_list[1].args[0]
         mount_args = [run_cmd[i + 1] for i, a in enumerate(run_cmd) if a == "--mount"]
         assert any("type=bind" in m for m in mount_args)
         assert any("/mnt/poirot/user-data" in m for m in mount_args)
-        assert any("abc123" in m for m in mount_args)
+        assert any("abc12345" in m for m in mount_args)
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend._get_free_port", return_value=9090)
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend.subprocess.run")
@@ -229,7 +250,7 @@ class TestCreate:
         ]
         p = _make_backend()
         extra = [PathMapping("/mnt/poirot/skills", "/host/skills", read_only=True)]
-        p.create("thread-1", "abc123", extra_mounts=extra)
+        p.create("thread-1", "abc12345", extra_mounts=extra)
         run_cmd = mock_run.call_args_list[1].args[0]
         mount_args = [run_cmd[i + 1] for i, a in enumerate(run_cmd) if a == "--mount"]
         assert any("/host/skills" in m and "readonly" in m for m in mount_args)
@@ -242,7 +263,7 @@ class TestCreate:
             _completed(stdout="cid\n", returncode=0),  # docker run
         ]
         p = _make_backend(environment={"NODE_ENV": "production"})
-        p.create("thread-1", "abc123")
+        p.create("thread-1", "abc12345")
         run_cmd = mock_run.call_args_list[1].args[0]
         assert "NODE_ENV=production" in run_cmd
 
@@ -254,7 +275,7 @@ class TestCreate:
             _completed(stdout="cid\n", returncode=0),  # docker run
         ]
         p = _make_backend()
-        p.create("thread-1", "abc123")
+        p.create("thread-1", "abc12345")
         run_cmd = mock_run.call_args_list[1].args[0]
         assert "seccomp=unconfined" in run_cmd
 
@@ -267,23 +288,23 @@ class TestDiscover:
             _completed(stdout="0.0.0.0:9090\n", returncode=0),  # docker port
         ]
         p = _make_backend()
-        info = p.discover("abc123")
+        info = p.discover("abc12345")
         assert info is not None
-        assert info.sandbox_id == "abc123"
+        assert info.sandbox_id == "abc12345"
         assert "9090" in info.sandbox_url
-        assert info.container_name == "test-sb-abc123"
+        assert info.container_name == "test-sb-abc12345"
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend.subprocess.run")
     def test_not_running(self, mock_run) -> None:
         mock_run.return_value = _completed(stdout="false\n", returncode=0)
         p = _make_backend()
-        assert p.discover("abc123") is None
+        assert p.discover("abc12345") is None
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend.subprocess.run")
     def test_not_found(self, mock_run) -> None:
         mock_run.return_value = _completed(stderr="no such container", returncode=1)
         p = _make_backend()
-        assert p.discover("abc123") is None
+        assert p.discover("abc12345") is None
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend.subprocess.run")
     def test_port_missing(self, mock_run) -> None:
@@ -292,13 +313,13 @@ class TestDiscover:
             _completed(stdout="", returncode=1),  # docker port fails
         ]
         p = _make_backend()
-        assert p.discover("abc123") is None
+        assert p.discover("abc12345") is None
 
     @patch("poirot.backend.agents.sandbox.docker.local_container_backend.subprocess.run")
     def test_timeout_returns_none(self, mock_run) -> None:
         mock_run.side_effect = subprocess.TimeoutExpired(cmd=[], timeout=5)
         p = _make_backend()
-        assert p.discover("abc123") is None
+        assert p.discover("abc12345") is None
 
 
 class TestDestroy:
