@@ -16,4 +16,5 @@ def create_initial_thread_state(user_input: str) -> ThreadState:
         "metadata": {},
         "governance": None,
         "sandbox": None,
+        "orchestration": None,
     }

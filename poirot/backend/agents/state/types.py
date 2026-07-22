@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Annotated, Any, NotRequired
+from typing import Annotated, Any, NotRequired, TypedDict
 
 from langchain.agents import AgentState
 
@@ -13,6 +13,7 @@ from poirot.backend.agents.state.reducers import (
     merge_governance,
     merge_metadata,
     merge_observations,
+    merge_orchestration,
     merge_reflection_items,
     merge_sandbox,
     merge_sources,
@@ -25,6 +26,18 @@ from poirot.backend.agents.state.reducers import (
 # merge_governance deep-merge（last-write-wins per leaf key）。
 # 全值可 JSON 序列化（str/int/dict/list），禁 file handle 等不可序列化对象。
 GovernanceState = dict[str, Any]
+
+
+class OrchestrationState(TypedDict, total=False):
+    """Multi-Agent 编排层状态（specialist 产物 + 活跃 specialist）。
+
+    与 lead agent artifacts 分离——specialist 产物写 specialist_artifacts，
+    不混入 ThreadState.artifacts（design.md §2 artifacts 分离）。
+    merge_orchestration 去重追加（specialist_artifacts 按 path / active_specialists 按 name）。
+    """
+
+    specialist_artifacts: list  # list[ArtifactRef]
+    active_specialists: list[str]
 
 
 @dataclass(frozen=True)
@@ -142,3 +155,4 @@ class ThreadState(AgentState):
     governance: Annotated[GovernanceState | None, merge_governance]
     tagged_context: Annotated[dict | None, merge_tagged_context]
     sandbox: Annotated[dict | None, merge_sandbox]
+    orchestration: Annotated[OrchestrationState | None, merge_orchestration]

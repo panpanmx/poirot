@@ -16,6 +16,8 @@ class CapabilityRegistry:
     artifact_store: Any | None = None
     sandbox_provider: Any | None = None
     skill_store: Any | None = None
+    specialist_registry: Any | None = None
+    subagent_provider: Any | None = None
 
     def get_model(self, name: str) -> Any:
         try:
@@ -48,3 +50,13 @@ class CapabilityRegistry:
         if self.skill_store is None:
             raise CapabilityMissingError("skill_store not registered")
         return self.skill_store
+
+    def get_specialist_registry(self) -> Any:
+        if self.specialist_registry is None:
+            raise CapabilityMissingError("specialist_registry not registered")
+        return self.specialist_registry
+
+    def get_subagent_provider(self) -> Any:
+        if self.subagent_provider is None:
+            raise CapabilityMissingError("subagent_provider not registered")
+        return self.subagent_provider

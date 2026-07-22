@@ -248,3 +248,52 @@ def merge_sandbox(
     raise ValueError(
         f"Conflicting sandbox state updates: {existing_id!r} != {new_id!r}"
     )
+
+
+def merge_orchestration(
+    existing: dict | None, new: dict | None
+) -> dict | None:
+    """Reducer for ThreadState.orchestration — 去重追加。
+
+    Multi-Agent 编排层状态合并（design.md §9）:
+    - new None → preserve existing（不清空，与 merge_sandbox 一致）
+    - existing None → return new
+    - both → specialist_artifacts 按 path 去重追加 + active_specialists 按 name 去重追加
+
+    INVARIANT:
+    - artifacts 分离：specialist 产物写 orchestration.specialist_artifacts，
+      不混入 ThreadState.artifacts（lead agent 产物）
+    - 去重追加：同 path 覆盖（last-write-wins），同 name 去重
+    - 不清空：new=None 返 existing（保留编排历史，跨轮审计）
+    """
+    if new is None:
+        return existing
+    if existing is None:
+        return new
+    return {
+        "specialist_artifacts": _dedupe_orchestration_artifacts(
+            existing.get("specialist_artifacts") or [],
+            new.get("specialist_artifacts") or [],
+        ),
+        "active_specialists": list(dict.fromkeys(
+            (existing.get("active_specialists") or [])
+            + (new.get("active_specialists") or [])
+        )),
+    }
+
+
+def _dedupe_orchestration_artifacts(existing: Iterable[Any], incoming: Iterable[Any]) -> list[Any]:
+    """specialist_artifacts 按 path 去重追加（last-write-wins per path）。
+
+    支持 ArtifactRef frozen dataclass 和 dict（_field 兼容两种）。
+    """
+    result = list(existing)
+    positions = {_field(item, "path"): index for index, item in enumerate(result)}
+    for item in incoming:
+        path = _field(item, "path")
+        if path in positions:
+            result[positions[path]] = item
+        else:
+            positions[path] = len(result)
+            result.append(item)
+    return result
