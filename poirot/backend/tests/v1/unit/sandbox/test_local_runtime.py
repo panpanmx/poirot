@@ -181,6 +181,46 @@ class TestGrep:
         assert matches[0].line_number == 1
 
 
+class TestGrepReDoSProtection:
+    """S10: grep ReDoS 防护——超长 pattern + 嵌套量词被拒。"""
+
+    def test_overlong_pattern_rejected(self, runtime: LocalRuntime, tmp_path) -> None:
+        long_pattern = "a" * 201
+        with pytest.raises(ValueError, match="too long"):
+            runtime.grep(str(tmp_path), long_pattern, literal=False)
+
+    def test_nested_quantifier_rejected(self, runtime: LocalRuntime, tmp_path) -> None:
+        with pytest.raises(ValueError, match="ReDoS"):
+            runtime.grep(str(tmp_path), "(a+)+", literal=False)
+
+    def test_nested_star_rejected(self, runtime: LocalRuntime, tmp_path) -> None:
+        with pytest.raises(ValueError, match="ReDoS"):
+            runtime.grep(str(tmp_path), "(a*)*", literal=False)
+
+    def test_mixed_nested_quantifier_rejected(self, runtime: LocalRuntime, tmp_path) -> None:
+        with pytest.raises(ValueError, match="ReDoS"):
+            runtime.grep(str(tmp_path), "(a+)*", literal=False)
+
+    def test_normal_regex_passes(self, runtime: LocalRuntime, tmp_path) -> None:
+        """正常 regex pattern 不被拒。"""
+        (tmp_path / "a.py").write_text("hello123\n")
+        matches, _ = runtime.grep(str(tmp_path), r"hello\d+", literal=False)
+        assert len(matches) == 1
+
+    def test_literal_mode_skips_validation(self, runtime: LocalRuntime, tmp_path) -> None:
+        """literal=True 时不做 ReDoS 校验（pattern 被 re.escape 转义）。"""
+        (tmp_path / "a.py").write_text("(a+)+ here\n")
+        matches, _ = runtime.grep(str(tmp_path), "(a+)+", literal=True)
+        assert len(matches) == 1
+
+    def test_max_length_boundary_passes(self, runtime: LocalRuntime, tmp_path) -> None:
+        """正好 200 字符的 pattern 通过。"""
+        pattern = "a" * 200
+        (tmp_path / "a.py").write_text(pattern + "\n")
+        matches, _ = runtime.grep(str(tmp_path), pattern, literal=False)
+        assert len(matches) == 1
+
+
 class TestDownloadUpdate:
     def test_download(self, runtime: LocalRuntime, tmp_path) -> None:
         f = tmp_path / "bin.dat"

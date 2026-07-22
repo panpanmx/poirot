@@ -21,6 +21,26 @@ from poirot.backend.agents.sandbox.utils.search import (
 
 _EXEC_TIMEOUT_SECONDS = 600
 
+# S10: ReDoS 防护
+_MAX_REGEX_PATTERN_LENGTH = 200
+# 检测嵌套量词：(group with quantifier) followed by quantifier — ReDoS 经典模式
+_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*?][^)]*\)[+*?]")
+
+
+def _validate_regex_pattern(pattern: str) -> None:
+    """ReDoS 防护：拒绝超长 pattern + 嵌套量词（如 (a+)+）。
+
+    Python re 无 timeout 机制，用户控制 pattern + 无防护 = 灾难回溯 DoS。
+    """
+    if len(pattern) > _MAX_REGEX_PATTERN_LENGTH:
+        raise ValueError(
+            f"regex pattern too long ({len(pattern)} > {_MAX_REGEX_PATTERN_LENGTH} chars)"
+        )
+    if _NESTED_QUANTIFIER_RE.search(pattern):
+        raise ValueError(
+            f"potential ReDoS pattern (nested quantifier): {pattern[:50]}"
+        )
+
 
 def _is_path_ignored(file_path: Path, root: Path) -> bool:
     """检查路径的任一部分是否匹配 IGNORE_PATTERNS（含目录名如 .git）。"""
@@ -181,7 +201,12 @@ class LocalRuntime:
         try:
             root = Path(path)
             flags = 0 if case_sensitive else re.IGNORECASE
-            regex = re.compile(re.escape(pattern) if literal else pattern, flags)
+            if literal:
+                regex = re.compile(re.escape(pattern), flags)
+            else:
+                # S10: ReDoS 防护——非 literal 模式校验 pattern
+                _validate_regex_pattern(pattern)
+                regex = re.compile(pattern, flags)
             matches: list[GrepMatch] = []
             for file_path in root.rglob(glob or "*"):
                 if file_path.is_dir():
