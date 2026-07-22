@@ -1,3 +1,11 @@
+"""文件操作锁——进程内 WeakValueDictionary。
+
+已知限制（S11 文档声明）：
+- 锁仅进程内，不跨进程。Docker 模式下 read_file + write_file 是两次独立 HTTP 调用，
+  别进程修改文件 → read 拿旧内容 → write 覆盖别进程的修改 → 静默丢数据（TOCTOU）。
+- 当前 Poirot 单进程运行，此限制可接受。多 worker 部署需引入容器内 flock 或 SDK 原子接口。
+- 长期方案见 design_docs/todo_docs/02-sandbox-security-vulnerabilities-fix.md §11 B6。
+"""
 from __future__ import annotations
 
 import threading
