@@ -148,11 +148,17 @@ class DockerSandboxProvider(SandboxProvider):
             raise ValueError("thread_id is required")
         effective_user_id = user_id or "default"
         thread_lock = self._get_thread_lock(thread_id, effective_user_id)
-        await asyncio.to_thread(thread_lock.acquire)
+        # S5: acquire 必须在 try 块内——cancel 在 acquire 等待期间抛出时，
+        # finally 能正确判断是否已持有锁。acquired flag 避免 cancel-before-acquire
+        # 路径误 release（未持有的锁 release 会 RuntimeError）。
+        acquired = False
         try:
+            await asyncio.to_thread(thread_lock.acquire)
+            acquired = True
             return await self._acquire_internal_async(thread_id, user_id=effective_user_id)
         finally:
-            thread_lock.release()
+            if acquired:
+                thread_lock.release()
 
     def _acquire_internal(self, thread_id: str, *, user_id: str) -> str:
         cached = self._reuse_in_process(thread_id, user_id)

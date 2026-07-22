@@ -302,6 +302,80 @@ class TestGetThreadLock:
         assert lock1 is not lock2
 
 
+class TestAcquireAsyncCancelSafety:
+    """S5: acquire_async cancel 后同 thread_id 可重新 acquire（无死锁）。"""
+
+    @pytest.mark.skipif(not HAS_ANYIO, reason="anyio not installed")
+    @pytest.mark.anyio
+    async def test_cancel_during_acquire_no_deadlock(self) -> None:
+        """cancel 在 _acquire_internal_async 等待期间 → finally release → 无死锁。"""
+        import asyncio
+
+        p = _make_provider()
+        sid = _deterministic_sandbox_id("default", "t1")
+        info = _make_info(sid)
+        p._backend.discover = MagicMock(return_value=info)
+        p._backend.create = MagicMock()
+        p._backend.is_alive = MagicMock(return_value=True)
+
+        # 用 event 让 _acquire_internal_async 阻塞，给 cancel 窗口
+        block_event = asyncio.Event()
+
+        original_internal = p._acquire_internal_async
+
+        async def blocking_internal(thread_id, *, user_id):
+            await block_event.wait()  # 阻塞直到 set
+            return await original_internal(thread_id, user_id=user_id)
+
+        p._acquire_internal_async = blocking_internal
+
+        # 启动 acquire_async task
+        task = asyncio.create_task(p.acquire_async("t1"))
+        await asyncio.sleep(0.1)  # 等 task 进入 blocking_internal
+
+        # cancel task
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+        # 验证锁已释放：同 thread_id 可重新 acquire
+        block_event.set()  # 解除阻塞（虽然 task 已 cancel）
+        # 重新 mock 为正常路径
+        p._acquire_internal_async = original_internal
+        result = p.acquire("t1")  # 同步 acquire 验证锁不阻塞
+        assert result == sid
+
+    @pytest.mark.skipif(not HAS_ANYIO, reason="anyio not installed")
+    @pytest.mark.anyio
+    async def test_cancel_before_acquire_no_release_error(self) -> None:
+        """cancel 在 acquire 等待期间（未持有锁）→ finally 不 release → 无 RuntimeError。"""
+        import asyncio
+
+        p = _make_provider()
+        # 让 thread_lock.acquire 阻塞（被另一 holder 持有）
+        lock = p._get_thread_lock("t1", "default")
+        lock.acquire()  # 模拟另一线程持有
+
+        # 启动 acquire_async task（会阻塞在 acquire）
+        task = asyncio.create_task(p.acquire_async("t1"))
+        await asyncio.sleep(0.1)
+
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+        # 释放锁，验证后续 acquire 正常
+        lock.release()
+        # 如果 cancel 路径误 release 了未持有的锁，这里 lock 状态会错乱
+        # 验证 lock 仍可正常 acquire/release
+        assert lock.acquire(blocking=False) is True
+        lock.release()
+
+
 class TestDiscoverOrCreate:
     def test_discover_hit(self) -> None:
         p = _make_provider()
