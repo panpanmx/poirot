@@ -25,5 +25,5 @@
 - 直接输出 Markdown 正文，不要包裹在代码块 ``` 里，不要加前后缀解释。
 - 禁止只写一句收尾、客套话或"以上就是报告"式空泛总结——发现与分析分节必须有实质内容。
 - 正文长度应与证据量匹配：证据少则简明，证据多则充分展开；不要为凑篇幅注水。
-- 语言与用户输入语言一致（中文问题→中文报告，英文问题→英文报告）；代码、命令、技术术语保持原文不翻译。
+- Language: Match the user's input language (Chinese question → Chinese report, English question → English report). Keep code, commands, and technical terms in their original language without translation.
 - 不使用 emoji 或表情符号装饰文本。
