@@ -27,6 +27,7 @@ from poirot.backend.agents.sandbox.docker.readiness import (
     wait_for_sandbox_ready,
     wait_for_sandbox_ready_async,
 )
+from poirot.backend.agents.sandbox.guards.audit_guard import AuditGuard
 from poirot.backend.agents.sandbox.guards.permissive_guard import PermissiveGuard
 from poirot.backend.agents.sandbox.sandbox import Sandbox
 from poirot.backend.agents.sandbox.translators.identity_translator import (
@@ -245,7 +246,7 @@ class DockerSandboxProvider(SandboxProvider):
     def _make_sandbox(self, sandbox_id: str, info: SandboxInfo) -> Sandbox:
         from poirot.backend.agents.sandbox.runtimes.docker_runtime import DockerRuntime
         runtime = DockerRuntime(info.sandbox_url)
-        return Sandbox(sandbox_id, runtime, IdentityTranslator(), PermissiveGuard())
+        return Sandbox(sandbox_id, runtime, IdentityTranslator(), AuditGuard(PermissiveGuard()))
 
     def _register(
         self, thread_id: str, sandbox_id: str, info: SandboxInfo, user_id: str,

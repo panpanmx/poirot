@@ -5,6 +5,7 @@ import threading
 from collections import OrderedDict
 
 from poirot.backend.agents.sandbox.contracts import SandboxProvider
+from poirot.backend.agents.sandbox.guards.audit_guard import AuditGuard
 from poirot.backend.agents.sandbox.guards.local_security_guard import (
     LocalSecurityGuard,
 )
@@ -72,7 +73,7 @@ class LocalSandboxProvider(SandboxProvider):
 
             runtime = LocalRuntime(allow_host_bash=self._allow_host_bash)
             translator = LocalPathTranslator(self._path_mappings)
-            guard = LocalSecurityGuard(self._path_mappings)
+            guard = AuditGuard(LocalSecurityGuard(self._path_mappings))
             sandbox = Sandbox(sandbox_id, runtime, translator, guard)
             self._sandboxes[sandbox_id] = sandbox
 

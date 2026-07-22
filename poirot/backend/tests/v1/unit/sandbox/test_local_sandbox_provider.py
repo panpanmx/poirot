@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from poirot.backend.agents.sandbox.contracts import SandboxProvider
+from poirot.backend.agents.sandbox.guards.audit_guard import AuditGuard
 from poirot.backend.agents.sandbox.guards.local_security_guard import (
     LocalSecurityGuard,
 )
@@ -201,10 +202,11 @@ class TestComposedComponents:
         sandbox = provider.get(sid)
         assert isinstance(sandbox._translator, LocalPathTranslator)
 
-    def test_sandbox_has_local_security_guard(self, provider: LocalSandboxProvider) -> None:
+    def test_sandbox_has_audit_guard_wrapping_local(self, provider: LocalSandboxProvider) -> None:
         sid = provider.acquire("thread-1", user_id="user-1")
         sandbox = provider.get(sid)
-        assert isinstance(sandbox._guard, LocalSecurityGuard)
+        assert isinstance(sandbox._guard, AuditGuard)
+        assert isinstance(sandbox._guard._inner, LocalSecurityGuard)
 
 
 class TestProtocolConformance:
