@@ -20,13 +20,32 @@ _console = Console()
 def ensure_config(project_root: Path) -> bool:
     """检查 .env 是否存在，不存在则启动交互式配置向导。
 
+    Docker 模式下 env_file 注入环境变量但容器内无 .env 文件——
+    若已检测到任意 provider API key 在环境变量中，跳过向导。
+
     Returns:
-        True = 配置已就绪（已存在或刚创建），False = 用户取消
+        True = 配置已就绪（文件存在 / env 已注入 / 刚创建），False = 用户取消
     """
     env_path = project_root / ".env"
     if env_path.exists():
         return True
+    # Docker env_file 模式：env 变量已注入但 .env 文件不在容器内
+    if _has_any_provider_key():
+        return True
     return _run_wizard(project_root, env_path)
+
+
+def _has_any_provider_key() -> bool:
+    """检查环境变量中是否已有任意 provider 的 API key。"""
+    import os
+    from poirot.backend.agents.config.provider_profile import PROVIDER_PROFILES
+
+    for profile in PROVIDER_PROFILES:
+        if profile.name == "fake":
+            continue
+        if os.environ.get(profile.env_key, "").strip():
+            return True
+    return False
 
 
 def _run_wizard(project_root: Path, env_path: Path) -> bool:

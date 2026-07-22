@@ -26,6 +26,7 @@ services:
     volumes:
       - ./.poirot:/app/.poirot   # 运行时数据持久化
       - ./skills:/app/skills     # 用户 skill 持久化
+      - ./.env:/app/.env         # .env 持久化（Ctrl+B 面板可写回）
     # 默认无 command，走 ENTRYPOINT 的 poirot（TUI 模式）
     # 覆盖示例: docker compose run --rm poirot cli
     #           docker compose run --rm poirot run "研究问题"
