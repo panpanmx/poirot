@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -103,7 +104,11 @@ class LocalRuntime:
                 f"permission denied: {path}", path=path, operation="write"
             ) from exc
 
-    def list_dir(self, path: str, max_depth: int = 2) -> list[str]:
+    def list_dir(self, path: str, max_depth: int = 2, max_entries: int = 1000) -> list[str]:
+        """BFS 剪枝遍历——os.scandir 按层下钻，超 max_depth 不递归，超 max_entries 截断。
+
+        S9: 替代 rglob("*") 先全遍历再过滤的反模式——node_modules 10 万文件不再 DoS。
+        """
         try:
             root = Path(path)
             if not root.exists():
@@ -111,17 +116,34 @@ class LocalRuntime:
                     f"dir not found: {path}", path=path, operation="list_dir"
                 )
             entries: list[str] = []
-            for item in root.rglob("*"):
-                rel = item.relative_to(root)
-                depth = len(rel.parts)
-                if depth > max_depth:
-                    continue
-                entries.append(str(rel))
+            self._scan_bfs(root, root, 1, max_depth, max_entries, entries)
             return sorted(entries)
         except PermissionError as exc:
             raise SandboxPermissionError(
                 f"permission denied: {path}", path=path, operation="list_dir"
             ) from exc
+
+    @staticmethod
+    def _scan_bfs(
+        root: Path, current: Path, depth: int, max_depth: int,
+        max_entries: int, entries: list[str],
+    ) -> None:
+        """BFS 递归扫描——depth = 当前层条目的路径段数（root 直接子项 depth=1）。"""
+        if depth > max_depth or len(entries) >= max_entries:
+            return
+        try:
+            with os.scandir(current) as it:
+                for entry in sorted(it, key=lambda e: e.name):
+                    if len(entries) >= max_entries:
+                        return
+                    rel = str(Path(entry.path).relative_to(root))
+                    entries.append(rel)
+                    if entry.is_dir() and depth < max_depth:
+                        LocalRuntime._scan_bfs(
+                            root, Path(entry.path), depth + 1, max_depth, max_entries, entries,
+                        )
+        except (PermissionError, OSError):
+            pass  # 跳过不可读目录
 
     def glob(
         self,

@@ -107,6 +107,31 @@ class TestListDir:
         entries = runtime.list_dir(str(tmp_path), max_depth=1)
         assert all(len(Path(e).parts) <= 1 for e in entries)
 
+    def test_max_entries_truncation(self, runtime: LocalRuntime, tmp_path) -> None:
+        """S9: max_entries 截断——超限不继续扫描。"""
+        for i in range(50):
+            (tmp_path / f"f{i:02d}.txt").write_text("x")
+        entries = runtime.list_dir(str(tmp_path), max_entries=10)
+        assert len(entries) <= 10
+
+    def test_bfs_does_not_traverse_deep_unnecessarily(self, runtime: LocalRuntime, tmp_path) -> None:
+        """S9: max_depth=1 时不递归进子目录（BFS 剪枝）。"""
+        (tmp_path / "d1").mkdir()
+        (tmp_path / "d1" / "deep.txt").write_text("x")
+        (tmp_path / "d1" / "d2").mkdir()
+        (tmp_path / "d1" / "d2" / "deeper.txt").write_text("x")
+        entries = runtime.list_dir(str(tmp_path), max_depth=1)
+        # d1 在 entries（depth 1），d1/deep.txt 不在（depth 2 > max_depth=1）
+        assert "d1" in entries
+        assert all(not e.startswith("d1/") for e in entries)
+
+    def test_large_dir_no_explosion(self, runtime: LocalRuntime, tmp_path) -> None:
+        """S9: 大目录不爆内存——max_entries 截断后立即停止。"""
+        for i in range(500):
+            (tmp_path / f"f{i:04d}.txt").write_text("x")
+        entries = runtime.list_dir(str(tmp_path), max_entries=50)
+        assert len(entries) <= 50  # 截断生效
+
 
 class TestGlob:
     def test_match(self, runtime: LocalRuntime, tmp_path) -> None:

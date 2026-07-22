@@ -48,7 +48,7 @@ def _make_sandbox() -> tuple[Sandbox, MagicMock, MagicMock, MagicMock, list[str]
     runtime.exec_command.side_effect = lambda c: (calls.append("r.exec"), "out")[1]
     runtime.read_file.side_effect = lambda p: (calls.append("r.read"), "content")[1]
     runtime.write_file.side_effect = lambda p, c, append=False: calls.append("r.write")
-    runtime.list_dir.side_effect = lambda p, max_depth=2: (calls.append("r.listdir"), ["/a", "/b"])[1]
+    runtime.list_dir.side_effect = lambda p, max_depth=2, **kw: (calls.append("r.listdir"), ["/a", "/b"])[1]
     runtime.glob.side_effect = lambda *a, **k: (calls.append("r.glob"), (["/x"], False))[1]
     runtime.download_file.side_effect = lambda p: (calls.append("r.download"), b"bytes")[1]
     runtime.update_file.side_effect = lambda p, c: calls.append("r.update")

@@ -63,10 +63,10 @@ class Sandbox:
         physical = self._translator.translate_path(path)
         self._runtime.write_file(physical, content, append=append)
 
-    def list_dir(self, path: str, max_depth: int = 2) -> list[str]:
+    def list_dir(self, path: str, max_depth: int = 2, max_entries: int = 1000) -> list[str]:
         self._guard.validate_path(path, write=False)
         physical = self._translator.translate_path(path)
-        entries = self._runtime.list_dir(physical, max_depth=max_depth)
+        entries = self._runtime.list_dir(physical, max_depth=max_depth, max_entries=max_entries)
         return [self._translator.mask_output(e) for e in entries]
 
     def glob(
