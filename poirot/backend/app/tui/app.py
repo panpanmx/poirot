@@ -398,6 +398,7 @@ class PoirotTUI(App):
     BINDINGS = [
         Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("ctrl+l", "clear_screen", "Clear", show=False),
+        Binding("escape", "cancel_run", "Cancel", show=False, priority=True),
         Binding("ctrl+p", "toggle_command_palette", "Commands", show=False),
         Binding("ctrl+n", "toggle_mcp_panel", "MCP", show=True, priority=True),
         Binding("ctrl+b", "toggle_settings", "Settings", show=True, priority=True),
@@ -546,6 +547,31 @@ class PoirotTUI(App):
             self.query_one(SidePanel).update_state(self.cli_state)
         except Exception:
             pass
+
+    def action_cancel_run(self) -> None:
+        """Esc: single press = interrupt (resumable), double within 3s = rollback."""
+        if not self.cli_state.get("_running"):
+            return
+        now = time.monotonic()
+        last_esc = getattr(self, "_last_esc_time", 0)
+        if now - last_esc < 3.0:
+            self._cancel_run(action="rollback")
+            self._last_esc_time = 0
+        else:
+            self._cancel_run(action="interrupt")
+            self._last_esc_time = now
+
+    def _cancel_run(self, action: str = "interrupt") -> None:
+        """Cancel current run: stop stream + journal + UI cleanup."""
+        from rich.text import Text
+        conv = self.query_one(ConversationLog)
+        label = "interrupted" if action == "interrupt" else "abandoned"
+        conv.write(Text(f"⏹ Run {label} by user.", style=theme.ACCENT_WARN))
+        self.cli_state["_running"] = False
+        self.remove_class("running")
+        self.query_one(StatusBar).update_state(self.cli_state)
+        self._update_exec_panel(None)
+        self._focus_conv_input()
 
     @work(thread=True)
     def _load_mcp_count(self) -> None:
