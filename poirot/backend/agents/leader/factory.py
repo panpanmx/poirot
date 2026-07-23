@@ -9,9 +9,18 @@ from langchain_core.tools import BaseTool
 from poirot.backend.agents.agent_tools.available import get_available_tools
 from poirot.backend.agents.capabilities.registry import CapabilityRegistry
 from poirot.backend.agents.leader.prompts import apply_prompt_template
+from poirot.backend.agents.middlewares.dangling_tool_call_middleware import (
+    DanglingToolCallMiddleware,
+)
 from poirot.backend.agents.middlewares.evidence_middleware import EvidenceMiddleware
+from poirot.backend.agents.middlewares.help_request_middleware import (
+    HelpRequestMiddleware,
+)
 from poirot.backend.agents.middlewares.loop_detection_middleware import (
     LoopDetectionMiddleware,
+)
+from poirot.backend.agents.middlewares.stall_detection_middleware import (
+    StallDetectionMiddleware,
 )
 from poirot.backend.agents.middlewares.reflection_middleware import (
     LightReflectionStrategy,
@@ -85,6 +94,8 @@ def _build_middlewares(
             sandbox_root=sandbox_root,
         ))
     middlewares.extend([
+        HelpRequestMiddleware(),
+        DanglingToolCallMiddleware(),
         # LoopDetectionMiddleware 已移除——用户要求取消循环上限约束。
         # 原配置：after_model 检测近 10 条消息同 (tool, args_hash) ≥3 → 清 tool_calls + jump model。
         # 如需恢复，取消下行注释 + 确保 import 存在。
@@ -95,6 +106,7 @@ def _build_middlewares(
         middlewares.append(orchestration_middleware)
     middlewares.extend([
         EvidenceMiddleware(),
+        StallDetectionMiddleware(),
         TodoMiddleware(enforce_completion=expert_mode),
         ReflectionMiddleware(
             strategy=SufficiencyStrategy(llm=model) if expert_mode else LightReflectionStrategy(),
