@@ -1,12 +1,9 @@
 <div align="center">
 
-<!-- Logo placeholder — replace with actual image -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="resource/assets/poirot-logo-dark.png">
-  <img alt="Poirot" width="720" src="resource/assets/poirot-logo.png">
+  <source media="(prefers-color-scheme: dark)" srcset="resource/poirot-logo.png">
+  <img alt="Poirot" width="720" src="resource/poirot-logo.png">
 </picture>
-
-# Poirot
 
 ### A Deep Research Agent Kernel
 
