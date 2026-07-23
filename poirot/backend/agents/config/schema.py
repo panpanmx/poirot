@@ -21,6 +21,19 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True)
+class HitlConfig:
+    """Human-in-the-loop configuration for long-task stall detection and help."""
+    capability_failure_threshold: int = 2
+    error_pattern_threshold: int = 3
+    todo_stagnation_rounds: int = 5
+    no_progress_timeout: int = 180
+    max_help_requests: int = 3
+    activity_heartbeat_interval: int = 10
+    cancel_grace_period: int = 5
+    steer_enabled: bool = True
+
+
+@dataclass(frozen=True)
 class ContextGovernanceConfig:
     """上下文治理层配置（策略层）。公共层 middleware 固定挂，不经此配置。"""
 
