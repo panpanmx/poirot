@@ -29,6 +29,7 @@ from poirot.backend.app.services.stream_service import PoirotStreamClient
 from poirot.backend.app.tui import theme
 from poirot.backend.app.tui.command_palette import CommandPalette
 from poirot.backend.app.tui.conversation import ConversationLog
+from poirot.backend.app.tui.help_screen import HelpRequestScreen
 from poirot.backend.app.tui.mcp_panel import McpPanel
 from poirot.backend.app.tui.side_panel import SidePanel
 from poirot.backend.app.tui.status_bar import StatusBar
@@ -382,6 +383,16 @@ class PoirotTUI(App):
     }}
     /* 宽屏才展开右侧会话信息面板 */
     PoirotTUI.wide.conversation-mode #side {{ display: block; }}
+
+    #exec-panel {{
+        height: 1;
+        color: {theme.TEXT_SECONDARY};
+        background: {theme.SURFACE};
+        padding: 0 2;
+        margin: 0 2;
+        display: none;
+    }}
+    PoirotTUI.conversation-mode.running #exec-panel {{ display: block; }}
     """
 
     BINDINGS = [
@@ -480,6 +491,7 @@ class PoirotTUI(App):
         yield Horizontal(
             Vertical(
                 ConversationLog(),
+                Static("", id="exec-panel"),
                 InputBox(
                     ConversationInput(
                         placeholder="Ask anything...  (输入 / 查看命令 · Enter 发送 · Ctrl+Enter 换行)",
@@ -733,6 +745,8 @@ class PoirotTUI(App):
 
         self.cli_state["_running"] = True
         status.update_state(self.cli_state)
+        self.add_class("running")
+        self._run_start_time = time.monotonic()
 
         try:
             ctx = self.runtime.run_manager.create_run(
@@ -761,6 +775,8 @@ class PoirotTUI(App):
                 if event.get("type") == "sandbox_update":
                     self.cli_state["sandbox_id"] = event.get("content", "")
                     self._refresh_side_panel()
+                if event.get("type") in ("tool_start", "tool_end"):
+                    self._update_exec_panel(event)
                 conv.render_event(event)
 
             self.runtime.run_manager.mark_success(ctx.run_id)
@@ -774,10 +790,30 @@ class PoirotTUI(App):
                 pass
         finally:
             self.cli_state["_running"] = False
+            self.remove_class("running")
             status.update_state(self.cli_state)
             self._refresh_side_panel()
+            self._update_exec_panel(None)
             # 每轮结束后重新聚焦输入框，保证用户可继续输入
             self._focus_conv_input()
+
+    def _update_exec_panel(self, event: Any) -> None:
+        """Update execution panel with current activity info."""
+        try:
+            panel = self.query_one("#exec-panel", Static)
+        except Exception:
+            return
+        if event is None:
+            panel.update("")
+            return
+        elapsed = time.monotonic() - getattr(self, "_run_start_time", time.monotonic())
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        tool_name = event.get("tool_name") or ""
+        if event.get("type") == "tool_start":
+            panel.update(f"● {tool_name} · {mins}m{secs:02d}s · Esc cancel")
+        elif event.get("type") == "tool_end":
+            panel.update(f"✓ {tool_name} · {mins}m{secs:02d}s")
 
     def _build_stream_config(self, ctx: Any) -> dict:
         from poirot.backend.app.cli.main import _build_stream_config
