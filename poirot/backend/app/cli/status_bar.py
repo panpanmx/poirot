@@ -28,15 +28,18 @@ def build_bottom_toolbar(cli_state: dict[str, Any]) -> HTML:
     model = cli_state.get("model", "?")
     tokens = cli_state.get("current_tokens", 0)
     fraction = cli_state.get("current_fraction", 0.0)
+    running = cli_state.get("_running", False)
+    activity = cli_state.get("_current_activity", "")
 
     tokens_k = tokens / 1000.0
     pct = fraction * 100.0
 
+    activity_part = f" ● {activity} " if running and activity else ""
     return HTML(
         f'<style fg="#aaaaaa" bg="#2b2b2b">'
         f" {mode} · {model} "
         f"</style>"
         f'<style fg="#aaaaaa" bg="#2b2b2b">'
-        f"| {tokens_k:.1f}K ({pct:.1f}%) | /help"
+        f"| {tokens_k:.1f}K ({pct:.1f}%) |{activity_part}/help"
         f"</style>"
     )
