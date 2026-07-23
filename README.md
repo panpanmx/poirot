@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="resource/poirot-logo.png">
-  <img alt="Poirot" width="720" src="resource/poirot-logo.png">
+  <source media="(prefers-color-scheme: dark)" srcset="resource/assets/poirot-logo.png">
+  <img alt="Poirot" width="720" src="resource/assets/poirot-logo.png">
 </picture>
 
 ### A Deep Research Agent Kernel
