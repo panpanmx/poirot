@@ -109,18 +109,19 @@ def run_chat(provider: str | None = None, model: str | None = None, legacy: bool
 
 def _build_stream_config(runtime: AppRuntime, run_context: Any) -> dict:
     """构建 graph config（stream 用，与 LeaderAgent.run 一致）。"""
+    rc = run_context.config.runtime
     return {
         "configurable": {
-            "expert_mode": run_context.config.runtime.expert_mode,
+            "expert_mode": rc.expert_mode,
             "run_id": run_context.run_id,
             "thread_id": run_context.thread_id,
             "journal": run_context.journal,
             "output_dir": str(run_context.output_dir),
-            "plan_enabled": run_context.config.runtime.plan_enabled,
-            "timezone": run_context.config.runtime.timezone,
+            "plan_enabled": rc.plan_enabled,
+            "timezone": rc.timezone,
             "model": _resolve_actual_model_name(runtime.capability_registry),
         },
-        "recursion_limit": 300,
+        "recursion_limit": rc.max_loop_steps * rc.graph_node_multiplier,
     }
 
 

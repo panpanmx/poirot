@@ -17,6 +17,7 @@ class RuntimeConfig:
     logs_root: str = ".poirot/logs"
     plan_enabled: bool = True
     reflection_enabled: bool = False
+    graph_node_multiplier: int = 10
 
 
 @dataclass(frozen=True)

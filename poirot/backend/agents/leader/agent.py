@@ -91,10 +91,9 @@ class LeaderAgent:
                 # 取实际模型的路由 provider 名（FallbackChatModel 的 provider_names），非 config 静态值
                 "model": _resolve_actual_model_name(self.capability_registry),
             },
-            # F8.5：recursion_limit 调高让硬预算（30 工具调用）先生效。
-            # create_agent 每个 middleware hook 各成独立 node，recursion 计数膨胀快，
-            # 50 太低先触发；调到 150 让硬预算（基于 len(errors)）先生效优雅退出。
-            "recursion_limit": 500,
+            # recursion_limit 从 config 推导：max_loop_steps * graph_node_multiplier。
+            # 不再硬编码——让长程任务有足够图节点预算，安全网是 StallDetectionMiddleware。
+            "recursion_limit": run_context.config.runtime.max_loop_steps * run_context.config.runtime.graph_node_multiplier,
         }
 
         # MCP tools are async-only StructuredTool; graph must run in async mode.
