@@ -162,6 +162,16 @@ class TestExecCommand:
         rt._client.shell.cleanup_session.side_effect = RuntimeError("cleanup failed")
         assert rt.exec_command("test") == "ok"
 
+    def test_error_observation_persists_after_retry_raises(self) -> None:
+        rt = _make_runtime()
+        rt._client.shell.exec_command.return_value = _make_result(
+            output=_ERROR_OBSERVATION_SIGNATURE
+        )
+        with pytest.raises(SandboxCommandError) as exc_info:
+            rt.exec_command("failing-cmd")
+        assert "ErrorObservation" in str(exc_info.value)
+        assert exc_info.value.details["command"] == "failing-cmd"
+
 
 class TestReadFile:
     def test_success(self) -> None:

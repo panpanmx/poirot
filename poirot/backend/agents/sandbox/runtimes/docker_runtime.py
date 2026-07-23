@@ -83,6 +83,12 @@ class DockerRuntime:
                             logger.warning(
                                 f"Failed to release recovery session {fresh_id}: {cleanup_error}"
                             )
+                if output and _ERROR_OBSERVATION_SIGNATURE in output:
+                    raise SandboxCommandError(
+                        "sandbox returned ErrorObservation after fresh-session retry",
+                        command=command,
+                        exit_code=None,
+                    )
                 return output if output else "(no output)"
             except SandboxError:
                 raise

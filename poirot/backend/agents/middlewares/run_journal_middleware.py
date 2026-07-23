@@ -79,6 +79,32 @@ def _tool_text(result: Any) -> str:
     return str(result)
 
 
+def _result_status(result: Any) -> str:
+    """Inspect tool result for error indicators beyond Python exceptions.
+
+    Tools may return ``ToolMessage(status="error")`` or ``Command(update={
+    'errors': [{'kind': 'failure'}], 'messages': [ToolMessage(status='error')]})``
+    without raising. The journal must record these as ``status="error"``.
+    """
+    if isinstance(result, ToolMessage):
+        if getattr(result, "status", None) == "error":
+            return "error"
+        return "ok"
+    update = getattr(result, "update", None)
+    if isinstance(update, dict):
+        errors = update.get("errors")
+        if isinstance(errors, list):
+            for err in errors:
+                if isinstance(err, dict) and err.get("kind") == "failure":
+                    return "error"
+        messages = update.get("messages")
+        if isinstance(messages, list):
+            for msg in messages:
+                if isinstance(msg, ToolMessage) and getattr(msg, "status", None) == "error":
+                    return "error"
+    return "ok"
+
+
 class RunJournalMiddleware(AgentMiddleware):
     """记录 agent/model/tool 事件到 RunJournal。无 journal 时静默不报错。"""
 
@@ -140,7 +166,7 @@ class RunJournalMiddleware(AgentMiddleware):
             })
         try:
             result = handler(request)
-            status = "ok"
+            status = _result_status(result)
         except Exception as exc:
             status = "error"
             if journal is not None:
@@ -181,7 +207,7 @@ class RunJournalMiddleware(AgentMiddleware):
             })
         try:
             result = await handler(request)
-            status = "ok"
+            status = _result_status(result)
         except Exception as exc:
             status = "error"
             if journal is not None:
