@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 class _StreamEventBase(TypedDict):
     """流式事件标准化结构，供 CLI 消费渲染。"""
 
-    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "skill_active" | "done" | "error" | "budget_update" | "sandbox_update" | "help_requested"
+    type: str  # "thinking" | "answer" | "tool_start" | "tool_end" | "skill_active" | "done" | "error" | "budget_update" | "sandbox_update" | "help_requested" | "activity_started" | "activity_finished" | "activity_heartbeat"
     content: str
     tool_name: str | None
     tool_args: dict | None

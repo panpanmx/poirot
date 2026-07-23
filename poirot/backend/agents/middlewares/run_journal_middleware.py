@@ -105,6 +105,14 @@ def _result_status(result: Any) -> str:
     return "ok"
 
 
+def _truncate_tool_input(tool_input: Any) -> str:
+    """Short summary of tool input for activity display."""
+    if isinstance(tool_input, dict):
+        cmd = tool_input.get("command") or tool_input.get("path") or str(tool_input)
+        return str(cmd)[:80]
+    return str(tool_input)[:80]
+
+
 class RunJournalMiddleware(AgentMiddleware):
     """记录 agent/model/tool 事件到 RunJournal。无 journal 时静默不报错。"""
 
@@ -113,6 +121,9 @@ class RunJournalMiddleware(AgentMiddleware):
 
     def _run_id(self, runtime: Runtime) -> Any:
         return _get_runtime_value(runtime, "run_id", None)
+
+    def _activity_tracker(self, runtime: Runtime) -> Any:
+        return _get_runtime_value(runtime, "activity_tracker", None)
 
     def _model_name(self, runtime: Runtime) -> str:
         return str(_get_runtime_value(runtime, "model", "") or "")
@@ -164,11 +175,17 @@ class RunJournalMiddleware(AgentMiddleware):
                 "tool_name": tool_name,
                 "tool_input": tool_input,
             })
+        tracker = self._activity_tracker(runtime) if runtime is not None else None
+        activity_id = f"{tool_name}:{tool_call.get('id', '')}" if isinstance(tool_call, dict) else tool_name
+        if tracker is not None:
+            tracker.start(activity_id, "tool", f"{tool_name}: {_truncate_tool_input(tool_input)}")
         try:
             result = handler(request)
             status = _result_status(result)
         except Exception as exc:
             status = "error"
+            if tracker is not None:
+                tracker.finish(activity_id, status="error", error=str(exc))
             if journal is not None:
                 journal.append("tool.finished", {
                     "run_id": run_id,
@@ -177,6 +194,8 @@ class RunJournalMiddleware(AgentMiddleware):
                     "status": status,
                 })
             raise
+        if tracker is not None:
+            tracker.finish(activity_id, status=status, output_size=len(_tool_text(result)))
         if journal is not None:
             journal.append("tool.finished", {
                 "run_id": run_id,
@@ -205,11 +224,17 @@ class RunJournalMiddleware(AgentMiddleware):
                 "tool_name": tool_name,
                 "tool_input": tool_input,
             })
+        tracker = self._activity_tracker(runtime) if runtime is not None else None
+        activity_id = f"{tool_name}:{tool_call.get('id', '')}" if isinstance(tool_call, dict) else tool_name
+        if tracker is not None:
+            tracker.start(activity_id, "tool", f"{tool_name}: {_truncate_tool_input(tool_input)}")
         try:
             result = await handler(request)
             status = _result_status(result)
         except Exception as exc:
             status = "error"
+            if tracker is not None:
+                tracker.finish(activity_id, status="error", error=str(exc))
             if journal is not None:
                 journal.append("tool.finished", {
                     "run_id": run_id,
@@ -218,6 +243,8 @@ class RunJournalMiddleware(AgentMiddleware):
                     "status": status,
                 })
             raise
+        if tracker is not None:
+            tracker.finish(activity_id, status=status, output_size=len(_tool_text(result)))
         if journal is not None:
             journal.append("tool.finished", {
                 "run_id": run_id,
