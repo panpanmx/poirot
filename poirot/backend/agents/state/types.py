@@ -156,3 +156,5 @@ class ThreadState(AgentState):
     tagged_context: Annotated[dict | None, merge_tagged_context]
     sandbox: Annotated[dict | None, merge_sandbox]
     orchestration: Annotated[OrchestrationState | None, merge_orchestration]
+    help_request_count: NotRequired[int]
+    pending_help: NotRequired[dict | None]
