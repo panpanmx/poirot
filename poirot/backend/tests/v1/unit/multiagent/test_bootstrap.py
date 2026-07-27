@@ -25,9 +25,11 @@ from poirot.backend.agents.multiagent.config import (
 def test_config_defaults():
     c = MultiAgentConfig()
     assert c.enabled is True
+    assert "pi" in c.specialists_use  # P6: pi 作为默认 coding specialist
     assert "codex" in c.specialists_use
     assert c.max_steps == 50
     assert c.subagent_max_steps == 20
+    assert c.specialists_pi_auto_install is True  # P6: 默认自动安装
 
 
 def test_config_frozen():

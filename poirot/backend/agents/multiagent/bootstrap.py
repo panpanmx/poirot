@@ -35,10 +35,20 @@ def _warn_specialist_disabled(name: str, reason: str) -> None:
     """启动时 warn 提示用户如何启用该 specialist（不阻塞主流程）。
 
     Bug C 修复（设计文档 46 §4.4）：
-    - codex/claude 凭证缺失 → warning 级别 + 安装步骤
+    - pi/codex/claude 凭证缺失 → warning 级别 + 安装步骤
     - subagent 失败 → error 级别（应是 bug，subagent 应零配置可用）
     """
-    if name == "codex":
+    if name == "pi":
+        logger.warning(
+            "[PiSpecialist] disabled: %s\n"
+            "To enable, install Pi CLI and set any API key:\n"
+            "  npm install -g @earendil-works/pi-coding-agent\n"
+            "  Set any of: ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, "
+            "KIMI_API_KEY, MINIMAX_API_KEY, etc.\n"
+            "Or configure multiagent.specialists.pi.provider in config.yaml",
+            reason,
+        )
+    elif name == "codex":
         logger.warning(
             "[CodexSpecialist] disabled: %s\n"
             "To enable, install Codex CLI and login:\n"
@@ -98,6 +108,56 @@ def _load_specialist(
 
     返 None 表示 specialist disabled（凭证缺失或未知 name）。
     """
+    if name == "pi":
+        from poirot.backend.agents.multiagent.installer.pi_installer import (
+            PiInstaller,
+        )
+        from poirot.backend.agents.multiagent.credentials.pi_credential import (
+            PiCredentialProvider,
+        )
+
+        # 决策 2：确保 pi 已装（后台安装不阻塞）
+        installer = PiInstaller(
+            auto_install=config.specialists_pi_auto_install
+        )
+        if not installer.ensure_installed():
+            return None  # pi 不可用，disabled（后台安装中或不可装）
+
+        # 决策 3：双轨凭证解析（config 优先 + env 兜底）
+        cred_provider = PiCredentialProvider(
+            config_provider=config.specialists_pi_provider or None,
+            config_api_key=config.specialists_pi_api_key or None,
+        )
+        cred = cred_provider.get_credential()
+        if cred is None:
+            return None  # 凭证缺失，disabled
+
+        # 决策 1 + 决策 5：加载 PiSpecialist（PiRuntime 内部 --no-builtin-tools + extension）
+        from poirot.backend.agents.multiagent.runtimes.pi_runtime import (
+            PiRuntime,
+            PiRuntimeConfig,
+        )
+        from poirot.backend.agents.multiagent.specialists.pi_specialist import (
+            PiSpecialist,
+        )
+        from poirot.backend.agents.multiagent.summarizers.context.pi_context_summarizer import (
+            PiContextSummarizer,
+        )
+        from poirot.backend.agents.multiagent.summarizers.result.pi_result_summarizer import (
+            PiResultSummarizer,
+        )
+
+        runtime_config = PiRuntimeConfig(
+            provider=cred.provider,
+            model=config.specialists_pi_model or None,
+            thinking_level=config.specialists_pi_thinking_level,
+        )
+        return (
+            PiSpecialist(runtime=PiRuntime(config=runtime_config), credential=cred),
+            PiContextSummarizer(),
+            PiResultSummarizer(),
+        )
+
     if name == "codex":
         from poirot.backend.agents.multiagent.credentials.codex_credential import (
             CodexCredentialProvider,

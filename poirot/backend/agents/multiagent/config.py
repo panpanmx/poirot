@@ -21,7 +21,7 @@ class MultiAgentConfig:
     """
 
     enabled: bool = True
-    specialists_use: tuple[str, ...] = ("codex", "claude", "subagent")
+    specialists_use: tuple[str, ...] = ("pi", "codex", "claude", "subagent")
     auto_approve: bool = True
     max_concurrent: int = 1
     timeout_seconds: int = 600
@@ -32,6 +32,12 @@ class MultiAgentConfig:
     metrics_db_path: str = ".poirot/multiagent.db"
     metrics_health_threshold: float = 0.4
     metrics_min_invoked: int = 5
+    # Pi specialist 配置（决策 2 + 决策 3 + 决策 5）
+    specialists_pi_provider: str = ""
+    specialists_pi_api_key: str = ""
+    specialists_pi_auto_install: bool = True
+    specialists_pi_model: str = ""
+    specialists_pi_thinking_level: str = "medium"
 
 
 STARTUP_ONLY_FIELDS = frozenset({
@@ -73,7 +79,7 @@ def load_multiagent_config() -> MultiAgentConfig:
     """Load multiagent config from env vars (POIROT_MULTIAGENT_*)."""
     return MultiAgentConfig(
         enabled=_env_bool("POIROT_MULTIAGENT_ENABLED", True),
-        specialists_use=_env_tuple("POIROT_MULTIAGENT_SPECIALISTS", ("codex", "claude", "subagent")),
+        specialists_use=_env_tuple("POIROT_MULTIAGENT_SPECIALISTS", ("pi", "codex", "claude", "subagent")),
         auto_approve=_env_bool("POIROT_MULTIAGENT_AUTO_APPROVE", True),
         max_concurrent=_env_int("POIROT_MULTIAGENT_MAX_CONCURRENT", 1),
         timeout_seconds=_env_int("POIROT_MULTIAGENT_TIMEOUT", 600),
@@ -84,4 +90,10 @@ def load_multiagent_config() -> MultiAgentConfig:
         metrics_db_path=os.getenv("POIROT_MULTIAGENT_DB_PATH", ".poirot/multiagent.db"),
         metrics_health_threshold=_env_float("POIROT_MULTIAGENT_HEALTH_THRESHOLD", 0.4),
         metrics_min_invoked=_env_int("POIROT_MULTIAGENT_MIN_INVOKED", 5),
+        # Pi specialist 配置（决策 2 + 决策 3 + 决策 5）
+        specialists_pi_provider=os.getenv("POIROT_MULTIAGENT_PI_PROVIDER", ""),
+        specialists_pi_api_key=os.getenv("POIROT_MULTIAGENT_PI_API_KEY", ""),
+        specialists_pi_auto_install=_env_bool("POIROT_MULTIAGENT_PI_AUTO_INSTALL", True),
+        specialists_pi_model=os.getenv("POIROT_MULTIAGENT_PI_MODEL", ""),
+        specialists_pi_thinking_level=os.getenv("POIROT_MULTIAGENT_PI_THINKING", "medium"),
     )
