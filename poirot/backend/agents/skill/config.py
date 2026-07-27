@@ -55,6 +55,10 @@ class SkillConfig:
     evolve_mutate_budget: int = 20
     evolve_max_steps: int = 5
     eval_config: "SkillEvalConfig" = field(default_factory=lambda: SkillEvalConfig())
+    # Skill Hub 配置（H8，默认 true opt-in）
+    hub_enabled: bool = True
+    hub_quarantine_enabled: bool = True
+    hub_audit_log: bool = True
 
 
 @dataclass(frozen=True)
@@ -82,6 +86,10 @@ def load_skill_config() -> SkillConfig:
     db_path = _anchor(os.environ.get("POIROT_SKILL_DB_PATH", ".poirot/skills.db"))
     include_builtin = os.environ.get("POIROT_SKILL_INCLUDE_BUILTIN", "true").lower() == "true"
     evolve_enabled = os.environ.get("POIROT_SKILL_EVOLVE_ENABLED", "false").lower() == "true"
+    # H8: hub 配置（默认 true opt-in）
+    hub_enabled = os.environ.get("POIROT_SKILL_HUB_ENABLED", "true").lower() == "true"
+    hub_quarantine = os.environ.get("POIROT_SKILL_HUB_QUARANTINE", "true").lower() == "true"
+    hub_audit = os.environ.get("POIROT_SKILL_HUB_AUDIT", "true").lower() == "true"
 
     dirs_raw = os.environ.get("POIROT_SKILL_DIRS", "")
     if dirs_raw:
@@ -192,4 +200,7 @@ def load_skill_config() -> SkillConfig:
         evolve_mutate_budget=evolve_mutate_budget,
         evolve_max_steps=evolve_max_steps,
         eval_config=eval_config,
+        hub_enabled=hub_enabled,
+        hub_quarantine_enabled=hub_quarantine,
+        hub_audit_log=hub_audit,
     )

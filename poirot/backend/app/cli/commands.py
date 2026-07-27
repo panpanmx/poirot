@@ -224,16 +224,25 @@ def _cmd_skill(ctx: CommandContext) -> None:
         if mgr is None:
             ctx.console.print("[dim]Skill module not enabled[/dim]")
             return
-        results = mgr.search_builtin_skills(query)
+        # H7 改造：优先用 hub unified_search（跨 source），降级为 builtin
+        try:
+            from poirot.backend.agents.skill.hub.search import unified_search_as_dicts
+
+            results = unified_search_as_dicts(query)
+        except Exception:
+            # hub 不可用降级为只搜 builtin
+            results = mgr.search_builtin_skills(query)
         if not results:
-            ctx.console.print(f"[dim]No builtin skills matching '{query}'[/dim]")
+            ctx.console.print(f"[dim]No skills matching '{query}'[/dim]")
             return
-        ctx.console.print(f"[bold]Builtin skills matching '{query}':[/bold]")
+        ctx.console.print(f"[bold]Skills matching '{query}':[/bold]")
         for r in results:
-            status = "[green]active[/green]" if r["is_active"] else "[dim]on-demand[/dim]"
+            source = r.get("source", "builtin")
+            status = "[green]installed[/green]" if r.get("is_installed") or r.get("is_active") else "[dim]on-demand[/dim]"
             ctx.console.print(
-                f"  [cyan]{r['name']}[/cyan] ({r['category']}) {status}"
-                f"\n    {r['description']}"
+                f"  [cyan]{r['name']}[/cyan] ({r.get('category', '-')}) [{source}] {status}"
+                f"\n    {r.get('description', '')}"
+                f"\n    install: /skill install {r.get('identifier', r['name'])}"
             )
         return
     if arg == "off":
@@ -389,35 +398,80 @@ def _cmd_skill(ctx: CommandContext) -> None:
     if parts and parts[0] == "install":
         rest = parts[1].strip() if len(parts) > 1 else ""
         if not rest:
-            ctx.console.print("[yellow]Usage: /skill install <path> [name][/yellow]")
+            ctx.console.print("[yellow]Usage: /skill install <path|identifier> [name][/yellow]")
             return
         mgr = getattr(ctx.runtime, "skill_manager", None)
         if mgr is None:
             ctx.console.print("[dim]Skill module not enabled[/dim]")
             return
         from pathlib import Path
-        from poirot.backend.agents.skill.parser import install as install_skill
         path_parts = rest.split()
-        src = Path(path_parts[0])
-        name = path_parts[1] if len(path_parts) > 1 else src.name
-        dest_root = Path("skills")
-        try:
-            skill_id = install_skill(src, name, dest_root)
-            mgr.load_startup()  # re-discover（idempotent upsert）
-            ctx.console.print(f"[green]Skill '{name}' installed (id={skill_id})[/green]")
-        except FileNotFoundError:
-            ctx.console.print(f"[red]Source path not found or no SKILL.md: {src}[/red]")
-        except ValueError as exc:
-            ctx.console.print(f"[red]Install failed: {exc}[/red]")
-        except Exception as exc:
-            ctx.console.print(f"[red]Install failed: {exc}[/red]")
+        src_or_identifier = path_parts[0]
+        name = path_parts[1] if len(path_parts) > 1 else None
+
+        # H7 改造：判断是 remote identifier 还是本地路径
+        is_remote = any(
+            src_or_identifier.startswith(prefix)
+            for prefix in ("github:", "well-known:", "claude-marketplace:", "builtin:")
+        )
+
+        if is_remote:
+            # H7 改造：用 hub Installer 安装 remote skill
+            try:
+                from poirot.backend.agents.skill.hub.installer import Installer
+                from poirot.backend.agents.skill.hub.sources.builtin_source import (
+                    BuiltinSource,
+                )
+                from poirot.backend.agents.skill.hub.sources.github_source import (
+                    GitHubSource,
+                )
+                from poirot.backend.agents.skill.hub.sources.well_known_source import (
+                    WellKnownSource,
+                )
+                from poirot.backend.agents.skill.hub.sources.claude_marketplace_source import (
+                    ClaudeMarketplaceSource,
+                )
+
+                installer = Installer(
+                    sources={
+                        "builtin": BuiltinSource(skill_manager=mgr),
+                        "github": GitHubSource(),
+                        "well-known": WellKnownSource(),
+                        "claude-marketplace": ClaudeMarketplaceSource(),
+                    },
+                    dest_root=Path("skills"),
+                )
+                skill_id = installer.install(src_or_identifier, name=name)
+                mgr.load_startup()  # re-discover
+                ctx.console.print(f"[green]Skill installed (id={skill_id})[/green]")
+            except ValueError as exc:
+                ctx.console.print(f"[red]Install failed: {exc}[/red]")
+            except Exception as exc:
+                ctx.console.print(f"[red]Install failed: {exc}[/red]")
+        else:
+            # 本地路径安装（既有逻辑）
+            from poirot.backend.agents.skill.parser import install as install_skill
+            src = Path(src_or_identifier)
+            if name is None:
+                name = src.name
+            dest_root = Path("skills")
+            try:
+                skill_id = install_skill(src, name, dest_root)
+                mgr.load_startup()  # re-discover（idempotent upsert）
+                ctx.console.print(f"[green]Skill '{name}' installed (id={skill_id})[/green]")
+            except FileNotFoundError:
+                ctx.console.print(f"[red]Source path not found or no SKILL.md: {src}[/red]")
+            except ValueError as exc:
+                ctx.console.print(f"[red]Install failed: {exc}[/red]")
+            except Exception as exc:
+                ctx.console.print(f"[red]Install failed: {exc}[/red]")
         return
     if not arg:
         cur = ctx.state.get("skill_override") or []
         cur_label = ",".join(cur) if cur else "(none)"
         ctx.console.print(
             f"[yellow]Usage: /skill <name> | /skill search <query> | /skill off (clear override) | "
-            f"/skill enable <name> | /skill disable <name> | /skill install <path> [name] | "
+            f"/skill enable <name> | /skill disable <name> | /skill install <path|identifier> [name] | "
             f"/skill evolve <name> | /skill capture <pattern> <name> | /skill history <name> | /skill list"
             f"  (current override: {cur_label})[/yellow]"
         )

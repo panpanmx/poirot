@@ -64,12 +64,28 @@ def skill_search(query: str, limit: int = 5) -> str:
     seen_names: set[str] = set()
     all_results: list[dict] = []
     for r in builtin_results + hub_results:
-        name = r.get("name", "")
+        # 统一转 dict（builtin 返 dict，hub 返 SkillMeta frozen dataclass）
+        if hasattr(r, "name"):
+            # SkillMeta → dict
+            r_dict = {
+                "name": r.name,
+                "description": r.description,
+                "category": r.category,
+                "source": r.source,
+                "identifier": r.identifier,
+                "is_installed": r.is_installed,
+                "install_path": r.install_path,
+                "preview_url": r.preview_url,
+            }
+        else:
+            # 已是 dict
+            r_dict = r
+        name = r_dict.get("name", "")
         if name and name not in seen_names:
             seen_names.add(name)
             # 统一字段格式（builtin 已有 source 缺失，补 "builtin"）
-            if "source" not in r:
-                r["source"] = "builtin"
-            all_results.append(r)
+            if "source" not in r_dict:
+                r_dict["source"] = "builtin"
+            all_results.append(r_dict)
 
     return json.dumps(all_results[:limit], ensure_ascii=False, indent=2)
