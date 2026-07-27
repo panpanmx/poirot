@@ -798,8 +798,14 @@ class PoirotTUI(App):
                     win = budget.get("window") or self.cli_state["current_window"]
                     self.cli_state["current_window"] = win
                     frac = budget.get("fraction")
-                    if not frac and win:
-                        frac = self.cli_state["current_tokens"] / win
+                    tokens = self.cli_state["current_tokens"]
+                    # Sanity check: if fraction from governance is implausibly small
+                    # (e.g. governance used a wrong/huge window), recompute from
+                    # displayed window so TUI percentage is consistent with shown numbers.
+                    if frac and win and tokens and (frac * win) > (tokens * 10):
+                        frac = tokens / win
+                    elif not frac and win:
+                        frac = tokens / win
                     self.cli_state["current_fraction"] = frac or 0.0
                     status.update_state(self.cli_state)
                     self._refresh_side_panel()

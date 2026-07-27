@@ -241,8 +241,13 @@ class StreamRenderer:
         if not budget:
             return
         self._cli_state["current_tokens"] = budget.get("total", 0)
-        self._cli_state["current_fraction"] = budget.get("fraction", 0.0)
-        self._cli_state["current_window"] = budget.get("window", 0)
+        win = budget.get("window", 0)
+        frac = budget.get("fraction", 0.0)
+        tokens = self._cli_state["current_tokens"]
+        if frac and win and tokens and (frac * win) > (tokens * 10):
+            frac = tokens / win if win else frac
+        self._cli_state["current_fraction"] = frac
+        self._cli_state["current_window"] = win
 
     def expand_last_round(self) -> None:
         """展开上一轮工具结果 + Thought 段原文（/expand 命令调用）。"""
