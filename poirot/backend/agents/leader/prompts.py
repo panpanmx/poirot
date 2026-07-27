@@ -55,6 +55,7 @@ def apply_prompt_template(
     expert_mode: bool = False,
     *,
     specialist_registry: Any | None = None,
+    skills_enabled: bool = False,
     **context: Any,
 ) -> str:
     """Render the system prompt based on expert_mode flag.
@@ -71,9 +72,12 @@ def apply_prompt_template(
     - <decision_guidance>   : default 模式引导模型自判深度
     - <mode_expert>         : expert 模式追加深度研究策略（仅 expert_mode=True）
     - <specialist_routing>  : specialist 启用时条件注入（Bug B 修复，仅 specialist_registry 非空）
+    - <skill_first_principle>: skills 启用时条件注入（F2 改造，仅 skills_enabled=True）
 
     specialist_registry: SpecialistRegistry | None。非空时条件注入 routing 段
     （保护 prompt caching：空时不注入，system prompt 不变）。
+    skills_enabled: bool。True 时条件注入 Skill-First Principle 段
+    （保护 prompt caching：False 时不注入）。
     """
     pm = get_prompt_manager()
     parts = [
@@ -87,4 +91,7 @@ def apply_prompt_template(
     routing_section = _build_specialist_routing_section(specialist_registry)
     if routing_section:
         parts.append(routing_section)
+    # F2 改造：条件注入 Skill-First Principle 段（skills 启用时）
+    if skills_enabled:
+        parts.append(pm.load("leader", "skill_first_principle"))
     return "\n\n".join(parts)

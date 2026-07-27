@@ -16,7 +16,35 @@ author: Adapted from deer-flow (Bytedance, MIT)
 This skill helps you discover skills available in Poirot's builtin library
 and install user-contributed skills.
 
-## When to Use
+## When to Use (PROACTIVE — call before starting work)
+
+Call this skill OR the `skill_search` tool when:
+
+- User asks for ANY specialized task (not just "find a skill")
+- You're about to start coding/research and haven't checked for relevant skills
+- Keywords in user message match skill categories: frontend/chart/diagram/github/debug/tdd/...
+
+### PROACTIVE CHECK (before starting work)
+
+1. Identify task keywords (frontend, chart, github, debug, tdd, ...)
+2. Call `skill_search("<keywords>")`
+3. If matches found → read the SKILL.md → follow its workflow
+4. If no matches → proceed with general capabilities
+
+### Common keywords → skill categories
+
+| Keyword | Likely skill |
+|---|---|
+| frontend / UI / React / Vue | frontend-design |
+| chart / graph / visualization | chart-visualization |
+| diagram / architecture | architecture-diagram |
+| github / PR / code review | github-code-review / github-pr-workflow |
+| debug / bug | systematic-debugging / python-debugpy |
+| test / TDD | test-driven-development |
+| plan / spike | plan / spike |
+| simplify / refactor | simplify-code |
+
+## Legacy When to Use (still valid)
 
 Use this skill when the user:
 

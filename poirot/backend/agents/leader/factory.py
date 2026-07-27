@@ -206,6 +206,7 @@ def make_lead_agent(
             system_prompt=apply_prompt_template(
                 expert_mode=resolved_expert,
                 specialist_registry=_safe_get_specialist_registry(registry),
+                skills_enabled=skill_injection_middleware is not None,
             ),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),
