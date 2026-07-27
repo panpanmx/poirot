@@ -105,7 +105,7 @@ class StallDetectionMiddleware(AgentMiddleware):
             name="stall_detection", additional_kwargs={"hide_from_ui": True},
         )]})
 
-    @hook_config(can_jump_to=["__end__"])
+    @hook_config(can_jump_to=["end"])
     @override
     def after_model(self, state: ThreadState, runtime: Runtime) -> dict[str, Any] | None:
         tracker = self._get_tracker(runtime)
@@ -118,11 +118,11 @@ class StallDetectionMiddleware(AgentMiddleware):
             result = self._check_stuck_and_pause(state, runtime)
             if result is not None:
                 update = dict(result.update)
-                update["jump_to"] = "__end__"
+                update["jump_to"] = "end"
                 return update
         return None
 
-    @hook_config(can_jump_to=["__end__"])
+    @hook_config(can_jump_to=["end"])
     @override
     async def aafter_model(self, state: ThreadState, runtime: Runtime) -> dict[str, Any] | None:
         return self.after_model(state, runtime)

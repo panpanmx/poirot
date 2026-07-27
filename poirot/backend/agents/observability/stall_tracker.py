@@ -61,7 +61,7 @@ def classify_error_class(error: str) -> str:
 
 @dataclass
 class StallTracker:
-    capability_failure_threshold: int = 2
+    capability_failure_threshold: int = 3
     error_pattern_threshold: int = 3
     todo_stagnation_rounds: int = 5
     no_progress_timeout: float = 180.0

@@ -65,38 +65,37 @@ class TestStallDetectionMiddleware:
         mw = StallDetectionMiddleware()
         journal = MagicMock()
         runtime = _make_runtime(journal)
-        err1 = ToolMessage(content="permission denied", tool_call_id="t1", name="bash", status="error")
-        err2 = ToolMessage(content="not found", tool_call_id="t2", name="bash", status="error")
 
-        req1 = SimpleNamespace(runtime=runtime, state={},
-            tool_call={"name": "bash", "id": "t1", "args": {"command": "apt install postgresql"}})
-        mw.wrap_tool_call(req1, lambda r: err1)
+        def _fire(cmd, tc_id):
+            err = ToolMessage(content="permission denied", tool_call_id=tc_id, name="bash", status="error")
+            req = SimpleNamespace(runtime=runtime, state={},
+                tool_call={"name": "bash", "id": tc_id, "args": {"command": cmd}})
+            return mw.wrap_tool_call(req, lambda r: err)
 
-        req2 = SimpleNamespace(runtime=runtime, state={},
-            tool_call={"name": "bash", "id": "t2", "args": {"command": "find / -name postgres"}})
-        result = mw.wrap_tool_call(req2, lambda r: err2)
-        # wrap_tool_call does NOT pause — returns result normally
-        assert result is err2
-        # pending_stuck flag is set
+        _fire("apt install postgresql", "t1")
+        _fire("which postgres", "t2")
+        result = _fire("pg_isready", "t3")
+        assert result is not None
         assert mw._pending_stuck.get("run-1") is True
 
     def test_after_model_includes_jump_to_end_when_stuck(self) -> None:
         mw = StallDetectionMiddleware()
         journal = MagicMock()
         runtime = _make_runtime(journal)
-        err1 = ToolMessage(content="permission denied", tool_call_id="t1", name="bash", status="error")
-        err2 = ToolMessage(content="not found", tool_call_id="t2", name="bash", status="error")
 
-        req1 = SimpleNamespace(runtime=runtime, state={},
-            tool_call={"name": "bash", "id": "t1", "args": {"command": "apt install postgresql"}})
-        mw.wrap_tool_call(req1, lambda r: err1)
-        req2 = SimpleNamespace(runtime=runtime, state={},
-            tool_call={"name": "bash", "id": "t2", "args": {"command": "find / -name postgres"}})
-        mw.wrap_tool_call(req2, lambda r: err2)
+        def _fire(cmd, tc_id):
+            err = ToolMessage(content="permission denied", tool_call_id=tc_id, name="bash", status="error")
+            req = SimpleNamespace(runtime=runtime, state={},
+                tool_call={"name": "bash", "id": tc_id, "args": {"command": cmd}})
+            mw.wrap_tool_call(req, lambda r: err)
+
+        _fire("apt install postgresql", "t1")
+        _fire("which postgres", "t2")
+        _fire("pg_isready", "t3")
 
         result = mw.after_model({}, runtime)
         assert result is not None
-        assert result.get("jump_to") == "__end__"
+        assert result.get("jump_to") == "end"
         assert any("STALL DETECTED" in str(m.content) for m in result.get("messages", []))
 
     def test_stuck_exception_sets_pending_flag(self) -> None:
@@ -106,15 +105,11 @@ class TestStallDetectionMiddleware:
         def failing_handler(req):
             raise RuntimeError("SandboxCommandError: permission denied")
 
-        req1 = SimpleNamespace(runtime=runtime, state={},
-            tool_call={"name": "bash", "id": "t1", "args": {"command": "apt install postgresql"}})
-        with __import__("pytest").raises(RuntimeError):
-            mw.wrap_tool_call(req1, failing_handler)
-
-        req2 = SimpleNamespace(runtime=runtime, state={},
-            tool_call={"name": "bash", "id": "t2", "args": {"command": "find / -name postgres"}})
-        with __import__("pytest").raises(RuntimeError):
-            mw.wrap_tool_call(req2, failing_handler)
+        for i, cmd in enumerate(("apt install postgresql", "which postgres", "pg_isready")):
+            req = SimpleNamespace(runtime=runtime, state={},
+                tool_call={"name": "bash", "id": f"t{i}", "args": {"command": cmd}})
+            with __import__("pytest").raises(RuntimeError):
+                mw.wrap_tool_call(req, failing_handler)
 
         assert mw._pending_stuck.get("run-1") is True
 
@@ -129,17 +124,19 @@ class TestStallDetectionMiddleware:
                 tool_call={"name": "bash", "id": tc_id, "args": {"command": cmd}})
             return mw.wrap_tool_call(req, lambda r: err)
 
-        # First pair: sets pending_stuck, after_model pauses
+        # First triplet: sets pending_stuck, after_model pauses
         _fire_failure("apt install pg1", "t1")
-        _fire_failure("apt install pg2", "t2")
+        _fire_failure("which pg", "t2")
+        _fire_failure("pg_isready", "t3")
         result = mw.after_model({}, runtime)
         assert result is not None  # paused
 
-        # Second pair: sets pending_stuck again, after_model force-finalizes
-        _fire_failure("apt install pg3", "t3")
+        # Second triplet: sets pending_stuck again, after_model force-finalizes
         _fire_failure("apt install pg4", "t4")
+        _fire_failure("apt install pg5", "t5")
+        _fire_failure("apt install pg6", "t6")
         result = mw.after_model({}, runtime)
         assert result is not None
-        assert result.get("jump_to") == "__end__"
+        assert result.get("jump_to") == "end"
         msgs = result.get("messages", [])
         assert any("HELP EXHAUSTED" in str(m.content) for m in msgs)

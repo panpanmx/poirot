@@ -36,11 +36,19 @@ class TestClassify:
 
 
 class TestCapabilityExhaustion:
-    def test_two_different_commands_same_capability_triggers_stuck(self) -> None:
+    def test_two_different_commands_same_capability_does_not_trigger_yet(self) -> None:
         tracker = StallTracker()
         tracker.record_tool_failure("bash", {"command": "apt install postgresql"}, "permission denied")
         assert not tracker.stuck
         tracker.record_tool_failure("bash", {"command": "find / -name postgres"}, "not found")
+        assert not tracker.stuck
+
+    def test_three_different_commands_same_capability_triggers_stuck(self) -> None:
+        tracker = StallTracker()
+        tracker.record_tool_failure("bash", {"command": "apt install postgresql"}, "permission denied")
+        tracker.record_tool_failure("bash", {"command": "find / -name postgres"}, "not found")
+        assert not tracker.stuck
+        tracker.record_tool_failure("bash", {"command": "dpkg -l | grep postgres"}, "not installed")
         assert tracker.stuck
         assert "capability exhausted" in tracker.get_stuck_reason()
 
@@ -85,8 +93,8 @@ class TestTodoStagnation:
 class TestReset:
     def test_reset_clears_all_signals(self) -> None:
         tracker = StallTracker()
-        tracker.record_tool_failure("bash", {"command": "apt install postgresql"}, "permission denied")
-        tracker.record_tool_failure("bash", {"command": "find / -name postgres"}, "not found")
+        for cmd in ("apt install postgresql", "which postgres", "pg_isready"):
+            tracker.record_tool_failure("bash", {"command": cmd}, "permission denied")
         assert tracker.stuck
         tracker.reset()
         assert not tracker.stuck
