@@ -22,6 +22,12 @@ class TestClassify:
     def test_network_error_class(self) -> None:
         assert classify_error_class("504 Gateway Time-out") == "network"
 
+    def test_sandbox_error_class(self) -> None:
+        assert classify_error_class("write failed: [WinError 10061] connection refused") == "sandbox"
+
+    def test_sandbox_capability_for_winerror(self) -> None:
+        assert classify_capability("write_file", {"path": "/x"}, "write failed: [WinError 10061]") == "sandbox"
+
     def test_permission_error_class(self) -> None:
         assert classify_error_class("Permission denied") == "permission"
 

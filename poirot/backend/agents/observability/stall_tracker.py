@@ -29,15 +29,17 @@ class ToolFailure:
 
 
 _CAPABILITY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("sandbox", re.compile(r"winerror|sandbox|exec failed|write failed|read failed|aio_sandbox|agent_sandbox", re.IGNORECASE)),
     ("postgres", re.compile(r"postgres|psql|pg_isready|pgvector", re.IGNORECASE)),
     ("root", re.compile(r"apt-get|apt |dpkg|sudo|/var/lib/apt", re.IGNORECASE)),
     ("docker", re.compile(r"docker|docker-compose|containerd", re.IGNORECASE)),
-    ("network", re.compile(r"curl|wget|http|504|gateway|timeout|connection refused", re.IGNORECASE)),
+    ("network", re.compile(r"curl|wget|http://|https://|504|gateway.{0,10}timeout", re.IGNORECASE)),
 ]
 
 _ERROR_CLASS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("permission", re.compile(r"permission denied|eacces|403|forbidden", re.IGNORECASE)),
-    ("network", re.compile(r"timeout|504|gateway|connection refused|unreachable", re.IGNORECASE)),
+    ("sandbox", re.compile(r"winerror|sandbox.{0,20}(fail|error|refus)|exec failed|write failed|read failed", re.IGNORECASE)),
+    ("network", re.compile(r"timeout|504|gateway.{0,10}timeout|connection refused|unreachable", re.IGNORECASE)),
     ("not_found", re.compile(r"not found|no such file|404|not installed|absent", re.IGNORECASE)),
 ]
 

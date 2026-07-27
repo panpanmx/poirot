@@ -80,6 +80,25 @@ class TestStallDetectionMiddleware:
         # pending_stuck flag is set
         assert mw._pending_stuck.get("run-1") is True
 
+    def test_after_model_includes_jump_to_end_when_stuck(self) -> None:
+        mw = StallDetectionMiddleware()
+        journal = MagicMock()
+        runtime = _make_runtime(journal)
+        err1 = ToolMessage(content="permission denied", tool_call_id="t1", name="bash", status="error")
+        err2 = ToolMessage(content="not found", tool_call_id="t2", name="bash", status="error")
+
+        req1 = SimpleNamespace(runtime=runtime, state={},
+            tool_call={"name": "bash", "id": "t1", "args": {"command": "apt install postgresql"}})
+        mw.wrap_tool_call(req1, lambda r: err1)
+        req2 = SimpleNamespace(runtime=runtime, state={},
+            tool_call={"name": "bash", "id": "t2", "args": {"command": "find / -name postgres"}})
+        mw.wrap_tool_call(req2, lambda r: err2)
+
+        result = mw.after_model({}, runtime)
+        assert result is not None
+        assert result.get("jump_to") == "__end__"
+        assert any("STALL DETECTED" in str(m.content) for m in result.get("messages", []))
+
     def test_stuck_exception_sets_pending_flag(self) -> None:
         mw = StallDetectionMiddleware()
         runtime = _make_runtime()
@@ -121,5 +140,6 @@ class TestStallDetectionMiddleware:
         _fire_failure("apt install pg4", "t4")
         result = mw.after_model({}, runtime)
         assert result is not None
+        assert result.get("jump_to") == "__end__"
         msgs = result.get("messages", [])
         assert any("HELP EXHAUSTED" in str(m.content) for m in msgs)

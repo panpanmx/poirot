@@ -117,7 +117,9 @@ class StallDetectionMiddleware(AgentMiddleware):
             self._pending_stuck[run_id] = False
             result = self._check_stuck_and_pause(state, runtime)
             if result is not None:
-                return result.update
+                update = dict(result.update)
+                update["jump_to"] = "__end__"
+                return update
         return None
 
     @hook_config(can_jump_to=["__end__"])
