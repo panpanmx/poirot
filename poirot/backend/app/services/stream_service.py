@@ -309,7 +309,7 @@ class PoirotStreamClient:
                         tool_result=None,
                         msg_id=None,
                         budget={
-                            "total": budget.get("total", 0),
+                            "total": budget.get("current", budget.get("total", 0)),
                             "fraction": budget.get("fraction", 0.0),
                             "window": budget.get("window", 0),
                         },

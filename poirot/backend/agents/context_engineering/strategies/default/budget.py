@@ -14,7 +14,7 @@ class BudgetTrackerExecutor:
     def init_budget(self, governance: dict | None) -> dict:
         g = dict(governance or {})
         d = dict(g.get("default") or {})
-        d["budget"] = {"input": 0, "output": 0, "total": 0, "window": 0, "fraction": 0.0}
+        d["budget"] = {"input": 0, "output": 0, "total": 0, "current": 0, "window": 0, "fraction": 0.0}
         d["seen_msgs"] = {}
         d["pending"] = []
         d["warned"] = False
@@ -27,7 +27,7 @@ class BudgetTrackerExecutor:
         g = dict(governance or {})
         d = dict(g.get("default") or {})
         seen = dict(d.get("seen_msgs") or {})
-        budget = dict(d.get("budget") or {"input": 0, "output": 0, "total": 0, "window": window, "fraction": 0.0})
+        budget = dict(d.get("budget") or {"input": 0, "output": 0, "total": 0, "current": 0, "window": window, "fraction": 0.0})
         budget["window"] = window
 
         for msg in messages:
@@ -45,6 +45,7 @@ class BudgetTrackerExecutor:
                     seen[msg.id] = (in_t, out_t)
 
         current = token_counter(messages)
+        budget["current"] = current
         budget["fraction"] = current / window if window > 0 else 0.0
 
         fraction = budget["fraction"]
