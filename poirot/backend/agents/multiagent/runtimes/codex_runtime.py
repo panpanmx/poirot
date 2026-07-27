@@ -138,9 +138,23 @@ class CodexRuntime:
         ]
 
     def _build_env(self) -> dict[str, str] | None:
-        """Pass CODEX_AUTH_PATH to subprocess if set."""
+        """Pass auth-related env vars to codex-acp subprocess.
+
+        Bug C 修复（设计文档 46 §4.3）：
+        透传 CODEX_AUTH_PATH + OPENAI_API_KEY + CODEX_HOME 给 codex-acp 子进程。
+        只透传 auth-related env vars（白名单），不透传全部 env（防敏感信息泄漏）。
+        """
         env: dict[str, str] = {}
+        # CODEX_AUTH_PATH：codex CLI 凭证文件路径（~/.codex/auth.json 默认）
         auth_path = os.getenv("CODEX_AUTH_PATH")
         if auth_path:
             env["CODEX_AUTH_PATH"] = auth_path
+        # OPENAI_API_KEY：API key 模式（非 OAuth 订阅）
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            env["OPENAI_API_KEY"] = openai_key
+        # CODEX_HOME：codex CLI 自定义配置目录（用户自定义 CODEX_HOME 覆盖默认 ~/.codex）
+        codex_home = os.getenv("CODEX_HOME")
+        if codex_home:
+            env["CODEX_HOME"] = codex_home
         return env or None

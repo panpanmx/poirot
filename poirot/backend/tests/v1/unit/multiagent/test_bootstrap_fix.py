@@ -1,14 +1,21 @@
-"""M1 Batch 测试 — multiagent bootstrap fix（Bug A + Bug B）。
+"""M1 + M2 Batch 测试 — multiagent bootstrap fix（Bug A + Bug B + Bug C）。
 
-验证（tasks.md 1.3）：
+M1 验证（tasks.md 1.3）：
 - test_agent_factory_injected: setup_multiagent 调用传了 agent_factory
 - test_specialist_routing_section_conditional: specialist_registry 非空时返 routing 段，空时返空串
 - test_subagent_specialist_zero_config: bootstrap 装配后 delegate_to_subagent 可调用（不崩 SpecialistStartupError）
 - test_lead_agent_prompt_has_routing_when_specialists: specialist 启用时 system prompt 含 <specialist_routing>
 - test_lead_agent_prompt_no_routing_when_empty: specialist 未启用时 system prompt 不含 routing 段
+
+M2 验证（tasks.md 2.4）：
+- test_codex_runtime_env_passthrough: mock env vars，验证 _build_env 透传 CODEX_AUTH_PATH + OPENAI_API_KEY + CODEX_HOME
+- test_claude_runtime_env_passthrough: 同上 CLAUDE_CODE_OAUTH_TOKEN + ANTHROPIC_AUTH_TOKEN 等
+- test_warn_specialist_disabled_codex: mock logger，验证 warn 消息格式 + 安装步骤
+- test_warn_specialist_disabled_subagent: subagent 失败用 error 级别
 """
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,10 +24,12 @@ from poirot.backend.agents.leader.prompts import (
     _build_specialist_routing_section,
     apply_prompt_template,
 )
-from poirot.backend.agents.multiagent.bootstrap import setup_multiagent
+from poirot.backend.agents.multiagent.bootstrap import (
+    _warn_specialist_disabled,
+    setup_multiagent,
+)
 from poirot.backend.agents.multiagent.config import MultiAgentConfig
 from poirot.backend.agents.multiagent.runtimes.subagent_runtime import SubagentRuntime
-from poirot.backend.agents.multiagent.specialist import SpecialistAgent
 from poirot.backend.agents.multiagent.types import (
     SpecialistCapabilities,
     SpecialistCapability,
@@ -136,3 +145,58 @@ def test_apply_prompt_template_routing_in_expert_mode():
         expert_mode=True, specialist_registry=mock_registry
     )
     assert "<specialist_routing>" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Bug C: _warn_specialist_disabled 凭证缺失 warn
+# ---------------------------------------------------------------------------
+
+
+def test_warn_specialist_disabled_codex(caplog):
+    """codex 凭证缺失时 warning 级别 + 安装步骤。"""
+    with caplog.at_level(logging.WARNING, logger="poirot.backend.agents.multiagent.bootstrap"):
+        _warn_specialist_disabled("codex", "credential missing")
+    # 至少有一条 WARNING 级别日志
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) >= 1
+    msg = warnings[0].getMessage()
+    assert "CodexSpecialist" in msg
+    assert "npm install -g @openai/codex" in msg
+    assert "codex login" in msg
+    assert "CODEX_AUTH_PATH" in msg
+
+
+def test_warn_specialist_disabled_claude(caplog):
+    """claude 凭证缺失时 warning 级别 + 安装步骤。"""
+    with caplog.at_level(logging.WARNING, logger="poirot.backend.agents.multiagent.bootstrap"):
+        _warn_specialist_disabled("claude", "credential missing")
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) >= 1
+    msg = warnings[0].getMessage()
+    assert "ClaudeCodeSpecialist" in msg
+    assert "npm install -g @anthropic/claude-code" in msg
+    assert "claude /login" in msg
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in msg
+
+
+def test_warn_specialist_disabled_subagent_uses_error_level(caplog):
+    """subagent 失败用 error 级别（应是 bug，subagent 应零配置可用）。"""
+    with caplog.at_level(logging.ERROR, logger="poirot.backend.agents.multiagent.bootstrap"):
+        _warn_specialist_disabled("subagent", "agent_factory not injected")
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) >= 1
+    msg = errors[0].getMessage()
+    assert "SubagentSpecialist" in msg
+    assert "bug" in msg.lower() or "zero-config" in msg.lower()
+    assert "agent_factory" in msg
+
+
+def test_warn_specialist_disabled_unknown_specialist(caplog):
+    """未知 specialist name 用 warning 级别 + 通用格式。"""
+    with caplog.at_level(logging.WARNING, logger="poirot.backend.agents.multiagent.bootstrap"):
+        _warn_specialist_disabled("unknown_sp", "reason here")
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) >= 1
+    msg = warnings[0].getMessage()
+    assert "unknown_sp" in msg
+    assert "reason here" in msg

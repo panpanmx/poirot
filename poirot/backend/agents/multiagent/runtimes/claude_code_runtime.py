@@ -6,9 +6,11 @@
 - 配置 claude mcp add 用 Poirot MCP tool（SpecialistMcpServer）
 - 超时 kill + crash SpecialistCrashError
 - specialist 黑盒：claude CLI 自带 model + 自管 ReAct loop（INV#1/INV#2）
+- Bug C 修复（设计文档 46 §4.3）：_build_env 透传 auth-related env vars
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 
@@ -35,6 +37,7 @@ class ClaudeCodeRuntime:
     def invoke(self, request: SpecialistRequest) -> SpecialistRawResult:
         start = time.time()
         cmd = self._build_command(request)
+        env = self._build_env()
 
         try:
             result = subprocess.run(
@@ -42,6 +45,7 @@ class ClaudeCodeRuntime:
                 capture_output=True,
                 text=True,
                 timeout=request.timeout_seconds,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             raise SpecialistTimeoutError(
@@ -66,6 +70,31 @@ class ClaudeCodeRuntime:
     def _build_command(self, request: SpecialistRequest) -> list[str]:
         """Build claude --print command with goal as argument."""
         return [self._command, "--print", request.goal]
+
+    def _build_env(self) -> dict[str, str] | None:
+        """Pass auth-related env vars to claude subprocess.
+
+        Bug C 修复（设计文档 46 §4.3）：
+        透传 CLAUDE_CODE_OAUTH_TOKEN + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_API_KEY
+        + CLAUDE_CODE_CREDENTIALS_PATH 给 claude CLI 子进程。
+
+        返 merge 后的 env（父进程 env + auth vars 覆盖），保证子进程 PATH/HOME 等基础 env 可用。
+        无 auth vars 时返 None（subprocess.run 用 None，子进程继承父 env）。
+        """
+        auth_env: dict[str, str] = {}
+        for var in (
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_CREDENTIALS_PATH",
+        ):
+            val = os.getenv(var)
+            if val:
+                auth_env[var] = val
+        if not auth_env:
+            return None
+        # merge：父进程 env + auth vars 覆盖（保证 PATH/HOME 等基础 env 可用）
+        return {**os.environ, **auth_env}
 
     def _build_mcp_add_command(self, sandbox_id: str) -> list[str]:
         """Build `claude mcp add` command for SpecialistMcpServer."""

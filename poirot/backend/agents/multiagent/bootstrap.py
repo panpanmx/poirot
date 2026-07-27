@@ -8,9 +8,11 @@
 - OrchestrationMiddleware 构造
 - 动态生成 specialist tools
 - enabled=false 时不装配（lead agent 行为不变）
+- 凭证缺失 warn 提示安装步骤（Bug C 修复，设计文档 46 §4.4）
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -25,6 +27,46 @@ from poirot.backend.agents.multiagent.tools import (
     make_specialist_tool,
     make_subagent_tool,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _warn_specialist_disabled(name: str, reason: str) -> None:
+    """启动时 warn 提示用户如何启用该 specialist（不阻塞主流程）。
+
+    Bug C 修复（设计文档 46 §4.4）：
+    - codex/claude 凭证缺失 → warning 级别 + 安装步骤
+    - subagent 失败 → error 级别（应是 bug，subagent 应零配置可用）
+    """
+    if name == "codex":
+        logger.warning(
+            "[CodexSpecialist] disabled: %s\n"
+            "To enable, install Codex CLI and login:\n"
+            "  npm install -g @openai/codex\n"
+            "  codex login\n"
+            "Or set CODEX_AUTH_PATH env var pointing to auth.json",
+            reason,
+        )
+    elif name == "claude":
+        logger.warning(
+            "[ClaudeCodeSpecialist] disabled: %s\n"
+            "To enable, install Claude Code CLI and login:\n"
+            "  npm install -g @anthropic/claude-code\n"
+            "  claude /login\n"
+            "Or set CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_AUTH_TOKEN env var",
+            reason,
+        )
+    elif name == "subagent":
+        logger.error(
+            "[SubagentSpecialist] disabled: %s\n"
+            "This is a bug — subagent should be zero-config. "
+            "Check that agent_factory is injected in bootstrap.",
+            reason,
+        )
+    else:
+        logger.warning(
+            "[Specialist:%s] disabled: %s", name, reason
+        )
 
 
 @dataclass(frozen=True)
@@ -139,6 +181,8 @@ def setup_multiagent(
     for name in config.specialists_use:
         loaded = _load_specialist(name, config, agent_factory=agent_factory)
         if loaded is None:
+            # Bug C 修复（设计文档 46 §4.4）：凭证缺失或加载失败时 warn 提示安装步骤
+            _warn_specialist_disabled(name, "credential missing or load failed")
             continue
         specialist, ctx_summarizer, result_summarizer = loaded
         specialist_registry.register(specialist)

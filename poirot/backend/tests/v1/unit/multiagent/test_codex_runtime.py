@@ -44,16 +44,56 @@ def test_build_mcp_config_none_sandbox_id():
 
 
 def test_build_env_without_codex_auth_path(monkeypatch):
-    monkeypatch.delenv("CODEX_AUTH_PATH", raising=False)
+    """无任何 auth env vars 时返 None（白名单全空）。"""
+    # 清除所有 auth-related env vars（Bug C 修复后透传多个 vars）
+    for var in ("CODEX_AUTH_PATH", "OPENAI_API_KEY", "CODEX_HOME"):
+        monkeypatch.delenv(var, raising=False)
     rt = CodexRuntime()
     assert rt._build_env() is None
 
 
 def test_build_env_with_codex_auth_path(monkeypatch):
+    """CODEX_AUTH_PATH 单独设时只透传该 var。"""
+    for var in ("OPENAI_API_KEY", "CODEX_HOME"):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("CODEX_AUTH_PATH", "/custom/auth.json")
     rt = CodexRuntime()
     env = rt._build_env()
     assert env == {"CODEX_AUTH_PATH": "/custom/auth.json"}
+
+
+def test_build_env_with_openai_api_key(monkeypatch):
+    """OPENAI_API_KEY 透传（Bug C 修复，API key 模式）。"""
+    for var in ("CODEX_AUTH_PATH", "CODEX_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    rt = CodexRuntime()
+    env = rt._build_env()
+    assert env == {"OPENAI_API_KEY": "sk-test-key"}
+
+
+def test_build_env_with_codex_home(monkeypatch):
+    """CODEX_HOME 透传（Bug C 修复，自定义配置目录）。"""
+    for var in ("CODEX_AUTH_PATH", "OPENAI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("CODEX_HOME", "/custom/codex/home")
+    rt = CodexRuntime()
+    env = rt._build_env()
+    assert env == {"CODEX_HOME": "/custom/codex/home"}
+
+
+def test_build_env_with_multiple_auth_vars(monkeypatch):
+    """多个 auth vars 同时设时全部透传（白名单聚合）。"""
+    monkeypatch.setenv("CODEX_AUTH_PATH", "/custom/auth.json")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    monkeypatch.setenv("CODEX_HOME", "/custom/codex/home")
+    rt = CodexRuntime()
+    env = rt._build_env()
+    assert env == {
+        "CODEX_AUTH_PATH": "/custom/auth.json",
+        "OPENAI_API_KEY": "sk-test-key",
+        "CODEX_HOME": "/custom/codex/home",
+    }
 
 
 def test_invoke_success_via_mock(monkeypatch):
