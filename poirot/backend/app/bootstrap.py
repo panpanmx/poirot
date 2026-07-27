@@ -549,7 +549,35 @@ def bootstrap_runtime(
 
     # Multi-Agent orchestration 装配 — enabled=false 时返空 setup（lead agent 行为不变）
     ma_config = load_multiagent_config()
-    ma_setup = setup_multiagent(ma_config)
+
+    # Bug A 修复：注入 agent_factory 让 SubagentRuntime 可用（设计文档 46 §4.1）
+    # _subagent_factory 构造 leaf-role lead agent（复用 lead agent 构造，但 leaf 不能再 delegate）。
+    # 闭包捕获本函数局部变量（registry / config / sandbox_provider / 各 middleware）。
+    def _subagent_factory() -> Any:
+        """Leaf-role lead agent factory for self-copy subagent.
+
+        复用 lead agent 构造逻辑，但 leaf role 限制：
+        - specialist_tools=None（leaf 看不到 delegate_to_* tool，不能再 spawn）
+        - orchestration_middleware=None（leaf 不挂 OrchestrationMiddleware）
+        这些限制让子 agent 无法递归 spawn（INVARIANT：max_spawn_depth=1 leaf-only MVP）。
+        """
+        return make_lead_agent(
+            expert_mode=expert_mode,
+            capability_registry=registry,
+            context_governance=config.context_governance,
+            sandbox_provider=sandbox_provider,
+            artifact_server=artifact_server,
+            mcp_audit_middleware=mcp_audit_middleware,
+            skill_injection_middleware=skill_injection_middleware,
+            skill_metrics_middleware=skill_metrics_middleware,
+            specialist_tools=None,              # leaf 不能再 delegate
+            orchestration_middleware=None,     # leaf 不挂 OrchestrationMiddleware
+        )
+
+    ma_setup = setup_multiagent(
+        ma_config,
+        agent_factory=_subagent_factory,
+    )
 
     registry = CapabilityRegistry(
         models={"researcher": researcher_model, "reporter": reporter_model},

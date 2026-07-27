@@ -43,12 +43,16 @@ class TestActivityTrackerHeartbeatIntegration:
 class TestStallToReportIntegration:
     def test_stuck_tracker_feeds_report(self) -> None:
         tracker = StallTracker()
+        # 阈值 5：5 次不同命令同 capability 触发 stuck
         tracker.record_tool_failure("bash", {"command": "apt install postgresql"}, "permission denied")
         tracker.record_tool_failure("bash", {"command": "find / -name postgres"}, "not found")
+        tracker.record_tool_failure("bash", {"command": "which postgres"}, "not found")
+        tracker.record_tool_failure("bash", {"command": "pg_isready"}, "not installed")
+        tracker.record_tool_failure("bash", {"command": "service postgres status"}, "no such service")
         assert tracker.stuck
         reason = tracker.get_stuck_reason()
         report = build_programmatic_report(tracker.get_failures(), reason or "stuck")
-        assert len(report.attempts) == 2
+        assert len(report.attempts) == 5
         assert "postgres" in report.blocker
 
 

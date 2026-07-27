@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -72,9 +73,12 @@ class TestStallDetectionMiddleware:
                 tool_call={"name": "bash", "id": tc_id, "args": {"command": cmd}})
             return mw.wrap_tool_call(req, lambda r: err)
 
+        # 阈值 5：5 次不同命令同 capability 触发 stuck
         _fire("apt install postgresql", "t1")
         _fire("which postgres", "t2")
-        result = _fire("pg_isready", "t3")
+        _fire("pg_isready", "t3")
+        _fire("service postgres status", "t4")
+        result = _fire("find / -name pg", "t5")
         assert result is not None
         assert mw._pending_stuck.get("run-1") is True
 
@@ -89,9 +93,12 @@ class TestStallDetectionMiddleware:
                 tool_call={"name": "bash", "id": tc_id, "args": {"command": cmd}})
             mw.wrap_tool_call(req, lambda r: err)
 
+        # 阈值 5：5 次失败触发 stuck
         _fire("apt install postgresql", "t1")
         _fire("which postgres", "t2")
         _fire("pg_isready", "t3")
+        _fire("service postgres status", "t4")
+        _fire("find / -name pg", "t5")
 
         result = mw.after_model({}, runtime)
         assert result is not None
@@ -105,7 +112,8 @@ class TestStallDetectionMiddleware:
         def failing_handler(req):
             raise RuntimeError("SandboxCommandError: permission denied")
 
-        for i, cmd in enumerate(("apt install postgresql", "which postgres", "pg_isready")):
+        # 阈值 5：5 次异常触发 stuck
+        for i, cmd in enumerate(("apt install postgresql", "which postgres", "pg_isready", "service pg status", "find / -name pg")):
             req = SimpleNamespace(runtime=runtime, state={},
                 tool_call={"name": "bash", "id": f"t{i}", "args": {"command": cmd}})
             with __import__("pytest").raises(RuntimeError):
@@ -124,17 +132,21 @@ class TestStallDetectionMiddleware:
                 tool_call={"name": "bash", "id": tc_id, "args": {"command": cmd}})
             return mw.wrap_tool_call(req, lambda r: err)
 
-        # First triplet: sets pending_stuck, after_model pauses
+        # First batch of 5: sets pending_stuck, after_model pauses
         _fire_failure("apt install pg1", "t1")
         _fire_failure("which pg", "t2")
         _fire_failure("pg_isready", "t3")
+        _fire_failure("service pg status", "t4")
+        _fire_failure("find / -name pg", "t5")
         result = mw.after_model({}, runtime)
         assert result is not None  # paused
 
-        # Second triplet: sets pending_stuck again, after_model force-finalizes
+        # Second batch of 5: sets pending_stuck again, after_model force-finalizes
         _fire_failure("apt install pg4", "t4")
         _fire_failure("apt install pg5", "t5")
         _fire_failure("apt install pg6", "t6")
+        _fire_failure("apt install pg7", "t7")
+        _fire_failure("apt install pg8", "t8")
         result = mw.after_model({}, runtime)
         assert result is not None
         assert result.get("jump_to") == "end"

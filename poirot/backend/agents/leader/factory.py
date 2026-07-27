@@ -37,6 +37,19 @@ from poirot.backend.agents.runtime.checkpointer import get_checkpointer
 from poirot.backend.agents.state.types import ThreadState
 
 
+def _safe_get_specialist_registry(registry: Any) -> Any | None:
+    """从 CapabilityRegistry 取 specialist_registry，缺失返 None（不抛 CapabilityMissingError）。
+
+    Bug B 修复：make_lead_agent 调 apply_prompt_template 时传 specialist_registry。
+    缺失（multiagent disabled 或无 specialist 注册）时返 None，
+    apply_prompt_template 不注入 <specialist_routing> 段（保护 prompt caching）。
+    """
+    try:
+        return registry.get_specialist_registry()
+    except Exception:
+        return None
+
+
 def _build_middlewares(
     expert_mode: bool,
     model: BaseChatModel | None = None,
@@ -136,7 +149,8 @@ def make_lead_agent(
 
     - middleware: _build_middlewares(expert_mode) 全挂参数化
     - tools: get_available_tools(groups=...) 按 expert 选 core / core+deferred
-    - system_prompt: apply_prompt_template(expert_mode)
+    - system_prompt: apply_prompt_template(expert_mode, specialist_registry=...)
+      — specialist_registry 非空时条件注入 <specialist_routing> 段（Bug B 修复）
     - checkpointer: get_checkpointer() 单例，thread_id 跨轮 + 跨模式保留 state
 
     Registry MUST store BaseChatModel / BaseTool instances directly.
@@ -189,7 +203,10 @@ def make_lead_agent(
             model=model,
             tools=tools or None,
             middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server, mcp_audit_middleware, skill_injection_middleware, skill_metrics_middleware, orchestration_middleware),
-            system_prompt=apply_prompt_template(expert_mode=resolved_expert),
+            system_prompt=apply_prompt_template(
+                expert_mode=resolved_expert,
+                specialist_registry=_safe_get_specialist_registry(registry),
+            ),
             state_schema=ThreadState,
             checkpointer=get_checkpointer(),
         ),

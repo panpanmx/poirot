@@ -194,6 +194,11 @@ class StallDetectionMiddleware(AgentMiddleware):
             runtime = getattr(request, "runtime", None)
             if runtime is not None:
                 self._check_and_flag_stuck(runtime, tool_name, tool_input, str(result.content))
+        elif isinstance(result, ToolMessage):
+            # Successful ToolMessage — decay stale failure signals.
+            runtime = getattr(request, "runtime", None)
+            if runtime is not None:
+                self._get_tracker(runtime).record_tool_success()
         return result
 
     @override
@@ -214,4 +219,8 @@ class StallDetectionMiddleware(AgentMiddleware):
             runtime = getattr(request, "runtime", None)
             if runtime is not None:
                 self._check_and_flag_stuck(runtime, tool_name, tool_input, str(result.content))
+        elif isinstance(result, ToolMessage):
+            runtime = getattr(request, "runtime", None)
+            if runtime is not None:
+                self._get_tracker(runtime).record_tool_success()
         return result
