@@ -142,10 +142,14 @@ class EvidenceMiddleware(AgentMiddleware):
         if not isinstance(result, ToolMessage):
             return result
 
-        sources = _extract_sources(tool_name, result)
-        state = request.state
-        step_id = _resolve_step_id(state)
-        obs = _make_observation(tool_name, result, sources, step_id)
+        from poirot.backend.agents.observability.interrupt_protection import (
+            interrupt_protection,
+        )
+        with interrupt_protection():
+            sources = _extract_sources(tool_name, result)
+            state = request.state
+            step_id = _resolve_step_id(state)
+            obs = _make_observation(tool_name, result, sources, step_id)
         return Command(update={
             "observations": [obs],
             "sources": sources,
@@ -166,10 +170,14 @@ class EvidenceMiddleware(AgentMiddleware):
         if not isinstance(result, ToolMessage):
             return result
 
-        sources = _extract_sources(tool_name, result)
-        state = request.state
-        step_id = _resolve_step_id(state)
-        obs = _make_observation(tool_name, result, sources, step_id)
+        from poirot.backend.agents.observability.interrupt_protection import (
+            interrupt_protection,
+        )
+        with interrupt_protection():
+            sources = _extract_sources(tool_name, result)
+            state = request.state
+            step_id = _resolve_step_id(state)
+            obs = _make_observation(tool_name, result, sources, step_id)
         return Command(update={
             "observations": [obs],
             "sources": sources,

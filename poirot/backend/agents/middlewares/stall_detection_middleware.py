@@ -20,6 +20,9 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 
 from poirot.backend.agents.middlewares.run_journal_middleware import _get_runtime_value
+from poirot.backend.agents.observability.interrupt_protection import (
+    is_interrupt_protected,
+)
 from poirot.backend.agents.observability.stall_tracker import StallTracker
 from poirot.backend.agents.state.types import ThreadState
 
@@ -53,6 +56,9 @@ class StallDetectionMiddleware(AgentMiddleware):
     ) -> Command | None:
         tracker = self._get_tracker(runtime)
         if not tracker.stuck:
+            return None
+
+        if is_interrupt_protected():
             return None
 
         if self._help_count(runtime) >= self._max_help:

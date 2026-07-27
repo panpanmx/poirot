@@ -102,14 +102,21 @@ class ReportMiddleware(AgentMiddleware):
         self._auto_synthesize = auto_synthesize
 
     def _synthesize(self, state: dict[str, Any]) -> str:
+        from poirot.backend.agents.observability.interrupt_protection import (
+            interrupt_protection,
+        )
         messages = _build_reporter_messages(state)
-        # config tags 标记内部调用，防 astream(stream_mode=messages) 捕获泄漏到 CLI
-        response = self._model.invoke(messages, config={"tags": ["internal_llm"]})
+        with interrupt_protection():
+            response = self._model.invoke(messages, config={"tags": ["internal_llm"]})
         return getattr(response, "content", str(response))
 
     async def _asynthesize(self, state: dict[str, Any]) -> str:
+        from poirot.backend.agents.observability.interrupt_protection import (
+            interrupt_protection,
+        )
         messages = _build_reporter_messages(state)
-        response = await self._model.ainvoke(messages, config={"tags": ["internal_llm"]})
+        with interrupt_protection():
+            response = await self._model.ainvoke(messages, config={"tags": ["internal_llm"]})
         return getattr(response, "content", str(response))
 
     @override
