@@ -158,3 +158,4 @@ class ThreadState(AgentState):
     orchestration: Annotated[OrchestrationState | None, merge_orchestration]
     help_request_count: NotRequired[int]
     pending_help: NotRequired[dict | None]
+    skill_suggestion: NotRequired[list[dict] | None]

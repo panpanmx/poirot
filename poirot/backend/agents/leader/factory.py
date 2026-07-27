@@ -88,6 +88,13 @@ def _build_middlewares(
         middlewares.append(skill_injection_middleware)
     if skill_metrics_middleware is not None:
         middlewares.append(skill_metrics_middleware)
+    # F3 改造：SkillActivationMiddleware before_model 主动建议相关 skill
+    # 参数化挂载：skills 启用时（skill_injection_middleware 非空）挂载
+    if skill_injection_middleware is not None:
+        from poirot.backend.agents.middlewares.skill_activation_middleware import (
+            SkillActivationMiddleware,
+        )
+        middlewares.append(SkillActivationMiddleware())
     middlewares.extend([
         TitleMiddleware(),
         RunJournalMiddleware(),
