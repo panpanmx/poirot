@@ -24,7 +24,7 @@ from poirot.backend.agents.multiagent.config import (
 
 def test_config_defaults():
     c = MultiAgentConfig()
-    assert c.enabled is False
+    assert c.enabled is True
     assert "codex" in c.specialists_use
     assert c.max_steps == 50
     assert c.subagent_max_steps == 20

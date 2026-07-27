@@ -16,10 +16,11 @@ from dataclasses import dataclass, field
 class MultiAgentConfig:
     """Multi-agent orchestration configuration.
 
-    enabled=false 时整个 multiagent 模块不装配（lead agent 行为不变）。
+    enabled=true 默认——default + expert 模式都装配 multiagent。
+    用 POIROT_MULTIAGENT_ENABLED=false 可显式关闭。
     """
 
-    enabled: bool = False
+    enabled: bool = True
     specialists_use: tuple[str, ...] = ("codex", "claude", "subagent")
     auto_approve: bool = True
     max_concurrent: int = 1
@@ -69,7 +70,7 @@ def _env_tuple(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
 def load_multiagent_config() -> MultiAgentConfig:
     """Load multiagent config from env vars (POIROT_MULTIAGENT_*)."""
     return MultiAgentConfig(
-        enabled=_env_bool("POIROT_MULTIAGENT_ENABLED", False),
+        enabled=_env_bool("POIROT_MULTIAGENT_ENABLED", True),
         specialists_use=_env_tuple("POIROT_MULTIAGENT_SPECIALISTS", ("codex", "claude", "subagent")),
         auto_approve=_env_bool("POIROT_MULTIAGENT_AUTO_APPROVE", True),
         max_concurrent=_env_int("POIROT_MULTIAGENT_MAX_CONCURRENT", 1),
