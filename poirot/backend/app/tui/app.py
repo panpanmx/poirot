@@ -676,6 +676,11 @@ class PoirotTUI(App):
         if not text:
             return
 
+        # Steer: running 时用户输入不中断，排队等当前工具 batch 完成后注入
+        if self.cli_state.get("_running") and not text.startswith("/"):
+            self._queue_steer(text)
+            return
+
         # 首次输入：从欢迎态切换到对话态
         if self._first_input:
             self._first_input = False
@@ -840,6 +845,26 @@ class PoirotTUI(App):
             panel.update(f"● {tool_name} · {mins}m{secs:02d}s · Esc cancel")
         elif event.get("type") == "tool_end":
             panel.update(f"✓ {tool_name} · {mins}m{secs:02d}s")
+            self._flush_steer_queue()
+
+    def _queue_steer(self, text: str) -> None:
+        """Queue user input as steer text (non-interrupting injection)."""
+        if not hasattr(self, "_steer_queue"):
+            self._steer_queue: list[str] = []
+        self._steer_queue.append(text)
+        from rich.text import Text
+        conv = self.query_one(ConversationLog)
+        conv.write(Text(f"⚡ Steer queued: {text[:80]}", style="dim"))
+
+    def _flush_steer_queue(self) -> None:
+        """Display queued steer messages after tool batch completes."""
+        if not hasattr(self, "_steer_queue") or not self._steer_queue:
+            return
+        from rich.text import Text
+        conv = self.query_one(ConversationLog)
+        for msg in self._steer_queue:
+            conv.write(Text(f"  ↳ Steer applied: {msg[:80]}", style="dim"))
+        self._steer_queue.clear()
 
     def _build_stream_config(self, ctx: Any) -> dict:
         from poirot.backend.app.cli.main import _build_stream_config
