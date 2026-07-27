@@ -42,7 +42,9 @@ STARTUP_ONLY_FIELDS = frozenset({
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
-    val = os.getenv(name, "")
+    val = os.getenv(name)
+    if val is None:
+        return default
     return val.lower() in ("true", "1", "yes")
 
 

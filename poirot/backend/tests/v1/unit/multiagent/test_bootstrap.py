@@ -42,10 +42,10 @@ def test_startup_only_fields():
     assert "metrics_db_path" in STARTUP_ONLY_FIELDS
 
 
-def test_load_config_disabled_by_default(monkeypatch):
+def test_load_config_enabled_by_default(monkeypatch):
     monkeypatch.delenv("POIROT_MULTIAGENT_ENABLED", raising=False)
     c = load_multiagent_config()
-    assert c.enabled is False
+    assert c.enabled is True
 
 
 def test_load_config_enabled(monkeypatch):
