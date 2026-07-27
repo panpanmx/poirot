@@ -86,21 +86,70 @@ class StallDetectionMiddleware(AgentMiddleware):
                 "failures": len(tracker.get_failures()),
             })
 
+        from langchain_core.messages import AIMessage
+
         tracker.reset()
-        return Command(goto=END, update={"messages": [HumanMessage(
+
+        # Before jumping to END, patch any dangling tool_calls with placeholder
+        # ToolMessages so the checkpointer saves a well-formed message history.
+        # If we skip ToolNode while AIMessage(tool_calls=[...]) is in state,
+        # the next run restores the checkpoint and immediately gets a 400 from LLM.
+        extra_patches: list = []
+        messages = state.get("messages") or []
+        answered_ids: set = set()
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                answered_ids.add(msg.tool_call_id)
+        for msg in messages:
+            if not isinstance(msg, AIMessage):
+                continue
+            for tc in (getattr(msg, "tool_calls", None) or []):
+                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                if tc_id and tc_id not in answered_ids:
+                    extra_patches.append(ToolMessage(
+                        content=f"[Skipped — stall detected ({reason})]",
+                        tool_call_id=tc_id,
+                        name=tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown"),
+                    ))
+                    answered_ids.add(tc_id)
+
+        messages_update = extra_patches + [HumanMessage(
             content=f"[STALL DETECTED] {reason}. Pausing for user help.",
             name="stall_detection",
             additional_kwargs={"hide_from_ui": True},
-        )]})
+        )]
+        return Command(goto=END, update={"messages": messages_update})
 
     def _force_finalize(
         self, state: ThreadState, runtime: Runtime, tracker: StallTracker,
     ) -> Command:
+        from langchain_core.messages import AIMessage as _AIMessage
+
         journal = _get_runtime_value(runtime, "journal", None)
         run_id = _get_runtime_value(runtime, "run_id", None)
         if journal is not None:
             journal.append("help.exhausted", {"run_id": run_id})
-        return Command(goto=END, update={"messages": [HumanMessage(
+
+        extra_patches: list = []
+        messages = state.get("messages") or []
+        answered_ids: set = set()
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                answered_ids.add(msg.tool_call_id)
+        for msg in messages:
+            if not isinstance(msg, _AIMessage):
+                continue
+            for tc in (getattr(msg, "tool_calls", None) or []):
+                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                if tc_id and tc_id not in answered_ids:
+                    extra_patches.append(ToolMessage(
+                        content="[Skipped — help exhausted]",
+                        tool_call_id=tc_id,
+                        name=tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown"),
+                    ))
+                    answered_ids.add(tc_id)
+
+        return Command(goto=END, update={"messages": extra_patches + [HumanMessage(
             content="[HELP EXHAUSTED] Maximum help requests reached. Forcing finalization.",
             name="stall_detection", additional_kwargs={"hide_from_ui": True},
         )]})
