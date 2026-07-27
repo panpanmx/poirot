@@ -236,11 +236,11 @@ class DraftSummary(Static):
     """
 
     def __init__(self, draft: DraftState, *, id: str) -> None:
-        super().__init__(self._render(draft), id=id)
+        super().__init__(self._format_draft(draft), id=id)
         self.draft = draft
 
     @staticmethod
-    def _render(draft: DraftState) -> str:
+    def _format_draft(draft: DraftState) -> str:
         preview = next((line.strip() for line in draft.text.splitlines() if line.strip()), "")
         if len(preview) > 72:
             preview = f"{preview[:72]}…"
@@ -261,7 +261,7 @@ class DraftSummary(Static):
 
     def refresh_draft(self, draft: DraftState) -> None:
         self.draft = draft
-        self.update(self._render(draft))
+        self.update(self._format_draft(draft))
 
 
 class DraftEditor(ModalScreen[str | None]):
