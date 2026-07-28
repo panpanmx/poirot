@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from poirot.backend.agents.sandbox.sandbox import Sandbox
+    from poirot.backend.agents.sandbox.types import SandboxInfo
 
 
 class SandboxProvider(ABC):
@@ -18,6 +19,7 @@ class SandboxProvider(ABC):
     - acquire 可能阻塞（Docker 操作），async 路径用 acquire_async
     - release 不一定销毁（LocalSandboxProvider no-op，DockerSandboxProvider 移入 warm_pool）
     - reset 清缓存不 shutdown；shutdown 销毁所有沙箱
+    - get_sandbox_info 返 SandboxInfo（含 sandbox_url）供 specialist 透传；Local 返 None
     """
 
     uses_thread_data_mounts: bool = False
@@ -48,6 +50,14 @@ class SandboxProvider(ABC):
     def release(self, sandbox_id: str) -> None:
         """释放沙箱（不一定销毁）。"""
         ...
+
+    def get_sandbox_info(self, sandbox_id: str) -> SandboxInfo | None:
+        """返沙箱元信息（含 sandbox_url），供 specialist 透传连接 Docker 容器。
+
+        DockerSandboxProvider 返 SandboxInfo；LocalSandboxProvider 返 None（无 URL 概念）。
+        默认返 None，Docker 子类重写。
+        """
+        return None
 
     def reset(self) -> None:
         """清缓存，不 shutdown。默认空实现。"""

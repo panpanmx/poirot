@@ -258,6 +258,44 @@ class TestMakeSandbox:
         assert sandbox.id == "abc"
 
 
+class TestGetSandboxInfo:
+    def test_returns_info_when_exists(self) -> None:
+        p = _make_provider()
+        info = _make_info("abc")
+        p._sandbox_infos["abc"] = info
+
+        result = p.get_sandbox_info("abc")
+
+        assert result is info
+
+    def test_returns_none_when_not_exists(self) -> None:
+        p = _make_provider()
+
+        result = p.get_sandbox_info("nonexistent")
+
+        assert result is None
+
+    def test_returns_info_with_sandbox_url(self) -> None:
+        p = _make_provider()
+        info = _make_info("abc", url="http://localhost:8080")
+        p._sandbox_infos["abc"] = info
+
+        result = p.get_sandbox_info("abc")
+
+        assert result is not None
+        assert result.sandbox_url == "http://localhost:8080"
+
+
+class TestLocalSandboxProviderGetSandboxInfo:
+    def test_returns_none(self) -> None:
+        from poirot.backend.agents.sandbox.local.local_sandbox_provider import (
+            LocalSandboxProvider,
+        )
+
+        p = LocalSandboxProvider()
+        assert p.get_sandbox_info("any-id") is None
+
+
 class TestDropUnhealthy:
     def test_removes_from_all_dicts(self) -> None:
         p = _make_provider()

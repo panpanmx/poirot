@@ -226,6 +226,11 @@ class DockerSandboxProvider(SandboxProvider):
                 self._last_activity[sandbox_id] = time.time()
             return sandbox
 
+    def get_sandbox_info(self, sandbox_id: str) -> SandboxInfo | None:
+        """返 SandboxInfo（含 sandbox_url），供 specialist 透传连接容器。"""
+        with self._lock:
+            return self._sandbox_infos.get(sandbox_id)
+
     # ── helpers ──────────────────────────────────────────────────
 
     def _make_executor(self, sandbox_config) -> DockerExecutor:
