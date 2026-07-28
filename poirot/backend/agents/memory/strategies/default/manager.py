@@ -270,3 +270,177 @@ class DefaultMemoryManager:
             "strength": assoc_strength, "type": assoc_type,
             "timestamp": now, "actor": actor,
         })
+
+    def consolidate(
+        self,
+        trace_ids: list[str],
+        merged_content: str,
+    ) -> MemoryTrace:
+        """Consolidate（巩固）：多条零散记忆合并为一条稳定知识（00 §5.3）。
+
+        E1：max_traces_to_consolidate=10（数量校验）。
+        C1：旧 trace 标记 forgotten（不删除），Retriever 过滤留 L3；consolidate 幂等。
+        merged_content 由外部 LLM 生成后传入（工具里无 LLM）。
+
+        Args:
+            trace_ids: 待合并的旧记忆 id 列表（min~max 范围校验）
+            merged_content: 合并后的内容（外部 LLM 生成）
+
+        Returns:
+            新创建的 semantic MemoryTrace
+
+        Raises:
+            MemoryNotFoundError: trace_ids 中任一不存在
+            ValueError: trace_ids 数量不在 [min, max] 范围
+        """
+        params = self._get_consolidate_params()
+
+        # E1：数量校验
+        if len(trace_ids) < params["min_traces_to_consolidate"]:
+            raise ValueError(
+                f"consolidate requires at least {params['min_traces_to_consolidate']} traces, "
+                f"got {len(trace_ids)}"
+            )
+        if len(trace_ids) > params["max_traces_to_consolidate"]:
+            raise ValueError(
+                f"consolidate allows at most {params['max_traces_to_consolidate']} traces, "
+                f"got {len(trace_ids)}"
+            )
+
+        old_traces: list[MemoryTrace] = []
+        for tid in trace_ids:
+            t = self._store.get(tid)
+            if t is None:
+                raise MemoryNotFoundError(tid)
+            old_traces.append(t)
+
+        # 计算合并后 importance（取 max + boost）
+        max_importance = max(t.importance for t in old_traces)
+        new_importance = min(1.0, max_importance + params["default_importance_boost"])
+
+        # C1 决策：consolidate 幂等（同 merged_content + 同 SEMANTIC type → 同 id）
+        new_trace_id = self._compute_trace_id(merged_content, MemoryType.SEMANTIC)
+        existing = self._store.get(new_trace_id)
+        if existing is not None:
+            # 已存在同 merged_content 的 semantic trace，返回旧 trace（幂等，不重复创建/标记）
+            self._emit_journal("memory.consolidate.duplicate", {
+                "trace_id": new_trace_id, "old_trace_ids": trace_ids,
+                "merged_content_preview": merged_content[:100],
+            })
+            return existing
+
+        # 合并关联（去重 union，排除待合并的内部关联）
+        all_target_ids: set[str] = set()
+        for t in old_traces:
+            for assoc in t.associations:
+                if assoc.target_id not in trace_ids:
+                    all_target_ids.add(assoc.target_id)
+        new_associations = tuple(
+            Association(target_id=tid, strength=0.5, type="related")
+            for tid in all_target_ids
+        )
+
+        # 创建新 semantic trace
+        now = time.time()
+        actor = self._get_actor()
+        semantic_params = self._get_decay_params(MemoryType.SEMANTIC)
+        new_trace = MemoryTrace(
+            id=new_trace_id,
+            content=merged_content,
+            type=MemoryType.SEMANTIC,
+            strength=semantic_params["base_strength"],
+            base_strength=semantic_params["base_strength"],
+            decay_rate=semantic_params["decay_rate"],
+            access_count=0,
+            last_accessed=now,
+            importance=new_importance,
+            associations=new_associations,
+            embedding=None,
+            source=f"consolidate:{','.join(trace_ids)}",
+            created_at=now,
+            metadata={"consolidated_from": trace_ids},
+            operation_log=(OperationLog(
+                timestamp=now,
+                operation="consolidate",
+                actor=actor,
+                diff={"consolidated_from": trace_ids, "merged_content": (None, merged_content[:200])},
+            ),),
+        )
+        self._store.add(new_trace)
+
+        # 标记旧 trace 遗忘（C1：不删除，标记 forgotten；append operation_log "forget"）
+        # F2 决策：用 batch_update 一次提交（MarkdownFileStore 一次全量重写，非 N 次 O(N²)）
+        forgotten_traces: list[MemoryTrace] = []
+        for old_trace in old_traces:
+            forgotten = replace(
+                old_trace,
+                metadata={**old_trace.metadata, "forgotten": True, "consolidated_into": new_trace.id},
+            )
+            forgotten = forgotten.with_operation(OperationLog(
+                timestamp=now,
+                operation="forget",
+                actor=actor,
+                diff={"reason": "consolidated", "consolidated_into": new_trace.id},
+            ))
+            forgotten_traces.append(forgotten)
+        self._store.batch_update(forgotten_traces)
+
+        self._emit_journal("memory.consolidate", {
+            "new_trace_id": new_trace_id, "old_trace_ids": trace_ids,
+            "merged_content_preview": merged_content[:100],
+            "timestamp": now, "actor": actor,
+        })
+        return new_trace
+
+    def reconsolidate(
+        self,
+        trace_id: str,
+        new_content: str,
+    ) -> MemoryTrace:
+        """Reconsolidate（重编码）：更新已有记忆内容（00 §5.3）。
+
+        B3：保留原 strength + last_accessed=now（不重置强度，视为一次访问）。
+        new_content 由外部 LLM 生成后传入（工具里无 LLM）。
+        frozen 语义：id 不变，content 替换，operation_log 记 diff（旧内容前 200 字符不丢）。
+
+        Args:
+            trace_id: 待更新的记忆 id
+            new_content: 新内容（外部 LLM 生成）
+
+        Returns:
+            更新后的 MemoryTrace（id 不变，content 替换，strength 保留）
+
+        Raises:
+            MemoryNotFoundError: trace_id 不存在
+        """
+        old_trace = self._store.get(trace_id)
+        if old_trace is None:
+            raise MemoryNotFoundError(trace_id)
+
+        # B3：保留原 strength + last_accessed=now（视为一次访问，不重置强度）
+        now = time.time()
+        actor = self._get_actor()
+        updated = replace(
+            old_trace,
+            content=new_content,
+            last_accessed=now,
+            metadata={**old_trace.metadata, "reconsolidated_at": now},
+        )
+        # traceability A：append operation_log，记 content diff（旧内容前 200 字符，防丢失）
+        updated = updated.with_operation(OperationLog(
+            timestamp=now,
+            operation="reconsolidate",
+            actor=actor,
+            diff={
+                "content": (old_trace.content[:200], new_content[:200]),
+                "strength": (old_trace.strength, old_trace.strength),  # B3：不变
+            },
+        ))
+        self._store.update(updated)
+        self._emit_journal("memory.reconsolidate", {
+            "trace_id": trace_id,
+            "old_content_preview": old_trace.content[:100],
+            "new_content_preview": new_content[:100],
+            "timestamp": now, "actor": actor,
+        })
+        return updated

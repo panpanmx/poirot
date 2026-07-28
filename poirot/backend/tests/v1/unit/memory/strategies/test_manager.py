@@ -404,3 +404,266 @@ class TestAssociate:
         assoc = next(a for a in updated_a.associations if a.target_id == id_b)
         assert assoc.strength == ASSOCIATE_DEFAULTS["default_strength"]
         assert assoc.type == ASSOCIATE_DEFAULTS["default_type"]
+
+
+class TestConsolidate:
+    def _setup_traces(self, store: _MockStore, n: int = 2) -> list[str]:
+        manager = DefaultMemoryManager(store)
+        ids = []
+        for i in range(n):
+            t = manager.encode(f"content-{i}", MemoryType.EPISODIC)
+            ids.append(t.id)
+        return ids
+
+    def test_min_traces_validation(self) -> None:
+        """E1：少于 min 抛 ValueError。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        with pytest.raises(ValueError, match="at least"):
+            manager.consolidate([], "merged")
+
+    def test_max_traces_validation(self) -> None:
+        """E1：超过 max 抛 ValueError。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=11)
+        with pytest.raises(ValueError, match="at most"):
+            manager.consolidate(ids, "merged")
+
+    def test_creates_semantic_trace(self) -> None:
+        """创建 semantic trace。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=2)
+
+        result = manager.consolidate(ids, "merged content")
+        assert result.type is MemoryType.SEMANTIC
+        assert result.content == "merged content"
+
+    def test_old_traces_marked_forgotten(self) -> None:
+        """C1：旧 trace 标记 forgotten，不删除。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=2)
+
+        new_trace = manager.consolidate(ids, "merged content")
+
+        for old_id in ids:
+            old_trace = store.get(old_id)
+            assert old_trace is not None  # 未删除
+            assert old_trace.metadata["forgotten"] is True
+            assert old_trace.metadata["consolidated_into"] == new_trace.id
+
+    def test_consolidated_from_metadata(self) -> None:
+        """新 trace metadata.consolidated_from = trace_ids。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=3)
+
+        new_trace = manager.consolidate(ids, "merged")
+        assert new_trace.metadata["consolidated_from"] == ids
+
+    def test_new_trace_operation_log_contains_consolidate(self) -> None:
+        """traceability A：新 trace operation_log 含 consolidate 条目。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=2)
+
+        new_trace = manager.consolidate(ids, "merged")
+        last_log = new_trace.operation_log[-1]
+        assert last_log.operation == "consolidate"
+
+    def test_old_trace_operation_log_contains_forget(self) -> None:
+        """traceability A：旧 trace operation_log 含 forget 条目。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=2)
+
+        manager.consolidate(ids, "merged")
+
+        for old_id in ids:
+            old_trace = store.get(old_id)
+            last_log = old_trace.operation_log[-1]
+            assert last_log.operation == "forget"
+
+    def test_batch_update_called_once(self) -> None:
+        """F2：batch_update 调用一次（非 N 次 update）。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=3)
+
+        manager.consolidate(ids, "merged")
+        assert len(store.batch_update_calls) == 1
+        assert len(store.batch_update_calls[0]) == 3  # 3 条 forgotten traces
+
+    def test_journal_emit_memory_consolidate(self) -> None:
+        """traceability B：emit memory.consolidate 事件。"""
+        events: list[str] = []
+
+        def journal(event: str, payload: dict) -> None:
+            events.append(event)
+
+        store = _MockStore()
+        manager = DefaultMemoryManager(store, journal=journal)
+        ids = self._setup_traces(store, n=2)
+        events.clear()
+
+        manager.consolidate(ids, "merged")
+        assert events == ["memory.consolidate"]
+
+    def test_merged_content_stored_directly(self) -> None:
+        """无 LLM：merged_content 直接存入。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=2)
+
+        new_trace = manager.consolidate(ids, "raw merged text from LLM")
+        assert new_trace.content == "raw merged text from LLM"
+
+    def test_trace_not_found_raises(self) -> None:
+        """trace 不存在抛 MemoryNotFoundError。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        real_id = manager.encode("real", MemoryType.EPISODIC).id
+
+        with pytest.raises(MemoryNotFoundError):
+            manager.consolidate([real_id, "nonexistent"], "merged")
+
+    def test_idempotent_same_merged_content(self) -> None:
+        """C1：同 merged_content+SEMANTIC 第二次返回旧 semantic trace。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        ids = self._setup_traces(store, n=2)
+
+        trace1 = manager.consolidate(ids, "merged")
+        trace2 = manager.consolidate(ids, "merged")  # 幂等
+        assert trace1 is trace2
+
+    def test_idempotent_emits_duplicate_event(self) -> None:
+        """C1：幂等时 emit memory.consolidate.duplicate 事件。"""
+        events: list[str] = []
+
+        def journal(event: str, payload: dict) -> None:
+            events.append(event)
+
+        store = _MockStore()
+        manager = DefaultMemoryManager(store, journal=journal)
+        ids = self._setup_traces(store, n=2)
+
+        manager.consolidate(ids, "merged")
+        events.clear()
+        manager.consolidate(ids, "merged")  # 幂等
+        assert events == ["memory.consolidate.duplicate"]
+
+    def test_importance_boost(self) -> None:
+        """新 importance = min(1.0, max(old.importance) + boost)。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        t1 = manager.encode("c1", MemoryType.EPISODIC, importance=0.6)
+        t2 = manager.encode("c2", MemoryType.EPISODIC, importance=0.8)
+
+        new_trace = manager.consolidate([t1.id, t2.id], "merged")
+        # max(0.6, 0.8) + 0.1 = 0.9
+        assert new_trace.importance == 0.9
+
+
+class TestReconsolidate:
+    def test_content_replaced(self) -> None:
+        """content 替换为 new_content。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old content", MemoryType.EPISODIC)
+
+        updated = manager.reconsolidate(trace.id, "new content")
+        assert updated.content == "new content"
+
+    def test_strength_preserved(self) -> None:
+        """B3：strength 保留原值，不重置。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old", MemoryType.EPISODIC)
+        original_strength = trace.strength
+
+        updated = manager.reconsolidate(trace.id, "new")
+        assert updated.strength == original_strength
+
+    def test_last_accessed_updated_to_now(self) -> None:
+        """B3：last_accessed=now（视为一次访问）。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old", MemoryType.EPISODIC)
+
+        updated = manager.reconsolidate(trace.id, "new")
+        assert updated.last_accessed >= trace.last_accessed
+
+    def test_id_unchanged(self) -> None:
+        """id 不变，content 替换。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old", MemoryType.EPISODIC)
+
+        updated = manager.reconsolidate(trace.id, "new")
+        assert updated.id == trace.id
+
+    def test_reconsolidated_at_metadata(self) -> None:
+        """metadata 加 reconsolidated_at=now。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old", MemoryType.EPISODIC)
+
+        updated = manager.reconsolidate(trace.id, "new")
+        assert "reconsolidated_at" in updated.metadata
+
+    def test_operation_log_contains_reconsolidate(self) -> None:
+        """traceability A：operation_log 含 reconsolidate 条目。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old", MemoryType.EPISODIC)
+
+        updated = manager.reconsolidate(trace.id, "new")
+        last_log = updated.operation_log[-1]
+        assert last_log.operation == "reconsolidate"
+
+    def test_operation_log_records_content_diff(self) -> None:
+        """operation_log diff.content 记旧/新前 200 字符。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old content", MemoryType.EPISODIC)
+
+        updated = manager.reconsolidate(trace.id, "new content")
+        last_log = updated.operation_log[-1]
+        assert last_log.diff["content"] == ("old content", "new content")
+
+    def test_journal_emit_memory_reconsolidate(self) -> None:
+        """traceability B：emit memory.reconsolidate 事件。"""
+        events: list[str] = []
+
+        def journal(event: str, payload: dict) -> None:
+            events.append(event)
+
+        store = _MockStore()
+        manager = DefaultMemoryManager(store, journal=journal)
+        trace = manager.encode("old", MemoryType.EPISODIC)
+        events.clear()
+
+        manager.reconsolidate(trace.id, "new")
+        assert events == ["memory.reconsolidate"]
+
+    def test_trace_not_found_raises(self) -> None:
+        """trace 不存在抛 MemoryNotFoundError。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+
+        with pytest.raises(MemoryNotFoundError):
+            manager.reconsolidate("nonexistent", "new content")
+
+    def test_original_trace_unchanged(self) -> None:
+        """frozen 语义：原 trace 实例不变。"""
+        store = _MockStore()
+        manager = DefaultMemoryManager(store)
+        trace = manager.encode("old", MemoryType.EPISODIC)
+        original_content = trace.content
+
+        manager.reconsolidate(trace.id, "new")
+        # 原始 trace（store 里被 update 替换，但 encode 返回的引用不变）
+        assert trace.content == original_content
