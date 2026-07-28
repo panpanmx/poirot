@@ -18,6 +18,7 @@ class CapabilityRegistry:
     skill_store: Any | None = None
     specialist_registry: Any | None = None
     subagent_provider: Any | None = None
+    memory_provider: Any | None = None
 
     def get_model(self, name: str) -> Any:
         try:
@@ -60,3 +61,8 @@ class CapabilityRegistry:
         if self.subagent_provider is None:
             raise CapabilityMissingError("subagent_provider not registered")
         return self.subagent_provider
+
+    def get_memory_provider(self) -> Any:
+        if self.memory_provider is None:
+            raise CapabilityMissingError("memory_provider not registered")
+        return self.memory_provider

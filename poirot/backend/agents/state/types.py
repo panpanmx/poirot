@@ -11,6 +11,8 @@ from poirot.backend.agents.state.reducers import (
     merge_errors,
     merge_final_report,
     merge_governance,
+    merge_memory_recalled,
+    merge_memory_updates,
     merge_metadata,
     merge_observations,
     merge_orchestration,
@@ -159,3 +161,5 @@ class ThreadState(AgentState):
     help_request_count: NotRequired[int]
     pending_help: NotRequired[dict | None]
     skill_suggestion: NotRequired[list[dict] | None]
+    recalled_memories: Annotated[list | None, merge_memory_recalled]
+    memory_updates: Annotated[list | None, merge_memory_updates]

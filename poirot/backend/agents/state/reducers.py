@@ -17,6 +17,8 @@ CORE_FIELDS = {
     "reflection_items",
     "final_report",
     "errors",
+    "recalled_memories",
+    "memory_updates",
 }
 
 MAX_ERRORS = 100
@@ -297,3 +299,44 @@ def _dedupe_orchestration_artifacts(existing: Iterable[Any], incoming: Iterable[
             positions[path] = len(result)
             result.append(item)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Long-term memory reducers (Layer 1 接入)
+# ---------------------------------------------------------------------------
+
+
+def merge_memory_recalled(existing: list | None, new: list | None) -> list | None:
+    """Reducer for ThreadState.recalled_memories — 去重追加 by id。
+
+    - new None → preserve existing（本轮未召回）
+    - existing None → return new
+    - both → 按 id 去重合并（同 id 覆盖，新 id 追加）
+
+    INVARIANT: 只存索引(id + score + strength)，不存全量内容
+    (内容走 per-call HumanMessage 注入，保护 prompt caching)。
+    """
+    if new is None:
+        return existing
+    if existing is None:
+        return list(new)
+    merged = {item.get("id"): item for item in existing}
+    for item in new:
+        merged[item.get("id")] = item  # last-write-wins per id
+    return list(merged.values())
+
+
+def merge_memory_updates(existing: list | None, new: list | None) -> list | None:
+    """Reducer for ThreadState.memory_updates — 追加（异步写后清理）。
+
+    - new None → preserve existing
+    - existing None → return new
+    - both → 追加（不去重，同一轮可能多次 update）
+
+    INVARIANT: 异步 cron 任务消费后清空（写 None）。
+    """
+    if new is None:
+        return existing
+    if existing is None:
+        return list(new)
+    return list(existing) + list(new)

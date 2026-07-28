@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from poirot.backend.agents.memory.config import MemoryConfig
 from poirot.backend.agents.sandbox.integration.config import SandboxConfig
 from poirot.backend.agents.skill.config import SkillConfig
 
@@ -86,3 +87,4 @@ class AppConfig:
     context_governance: ContextGovernanceConfig = field(default_factory=ContextGovernanceConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     skill: SkillConfig = field(default_factory=SkillConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
