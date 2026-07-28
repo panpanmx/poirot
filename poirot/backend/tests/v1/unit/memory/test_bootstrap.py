@@ -7,6 +7,7 @@ import pytest
 
 from poirot.backend.agents.memory.bootstrap import (
     _make_journal_callback,
+    _wrap_store,
     get_memory_provider,
     reset_memory_provider,
     set_memory_provider,
@@ -170,3 +171,83 @@ class TestMakeJournalCallback:
         monkeypatch.setattr("poirot.backend.agents.journal.get_run_journal", lambda: None, raising=False)
         callback = _make_journal_callback()
         assert callback is None
+
+
+class _MockStoreForWrap:
+    def __init__(self):
+        self.add_calls = []
+        self.update_calls = []
+        self.batch_update_calls = []
+        self.remove_calls = []
+
+    def add(self, trace):
+        self.add_calls.append(trace)
+
+    def update(self, trace):
+        self.update_calls.append(trace)
+
+    def batch_update(self, traces):
+        self.batch_update_calls.append(list(traces))
+
+    def remove(self, trace_id):
+        self.remove_calls.append(trace_id)
+
+
+class _MockRetrieverForWrap:
+    def __init__(self):
+        self.on_added = []
+        self.on_updated = []
+        self.on_removed = []
+
+    def on_trace_added(self, trace):
+        self.on_added.append(trace)
+
+    def on_trace_updated(self, trace):
+        self.on_updated.append(trace)
+
+    def on_trace_removed(self, trace_id):
+        self.on_removed.append(trace_id)
+
+
+class TestWrapStore:
+    def test_add_calls_on_trace_added(self) -> None:
+        store = _MockStoreForWrap()
+        retriever = _MockRetrieverForWrap()
+        _wrap_store(store, retriever)
+        trace = object()
+        store.add(trace)
+        assert store.add_calls == [trace]
+        assert retriever.on_added == [trace]
+
+    def test_update_calls_on_trace_updated(self) -> None:
+        store = _MockStoreForWrap()
+        retriever = _MockRetrieverForWrap()
+        _wrap_store(store, retriever)
+        trace = object()
+        store.update(trace)
+        assert store.update_calls == [trace]
+        assert retriever.on_updated == [trace]
+
+    def test_batch_update_calls_on_trace_updated_per_trace(self) -> None:
+        store = _MockStoreForWrap()
+        retriever = _MockRetrieverForWrap()
+        _wrap_store(store, retriever)
+        t1, t2, t3 = object(), object(), object()
+        store.batch_update([t1, t2, t3])
+        assert store.batch_update_calls == [[t1, t2, t3]]
+        assert retriever.on_updated == [t1, t2, t3]
+
+    def test_remove_calls_on_trace_removed(self) -> None:
+        store = _MockStoreForWrap()
+        retriever = _MockRetrieverForWrap()
+        _wrap_store(store, retriever)
+        store.remove("trace-id-123")
+        assert store.remove_calls == ["trace-id-123"]
+        assert retriever.on_removed == ["trace-id-123"]
+
+    def test_wrapped_methods_replace_originals(self) -> None:
+        store = _MockStoreForWrap()
+        retriever = _MockRetrieverForWrap()
+        original_add = store.add
+        _wrap_store(store, retriever)
+        assert store.add is not original_add  # 包装后是 wrapped 版本

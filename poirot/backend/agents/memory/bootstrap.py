@@ -88,7 +88,7 @@ def _load_memory_provider(config: Any) -> Any:
 
     journal = _make_journal_callback()
     provider = build_default_provider(journal=journal)
-    # _wrap_store(provider.store(), provider.retriever())  # Batch 3 加
+    _wrap_store(provider.store(), provider.retriever())  # 5B 增量索引触发
     return provider
 
 
@@ -108,3 +108,37 @@ def _make_journal_callback() -> Any:
     except Exception as exc:
         logger.debug("RunJournal unavailable, memory journal events disabled: %s", exc)
         return None
+
+
+def _wrap_store(store: Any, retriever: Any) -> None:
+    """装饰器模式：包装 store.add/update/batch_update/remove 后调 retriever.on_trace_*。
+
+    5B 增量索引触发（50 §6.5）：store 变更后 retriever 索引同步更新。
+    运行时方法替换，不改 store 类。
+    """
+    original_add = store.add
+    original_update = store.update
+    original_batch_update = store.batch_update
+    original_remove = store.remove
+
+    def wrapped_add(trace: Any) -> None:
+        original_add(trace)
+        retriever.on_trace_added(trace)
+
+    def wrapped_update(trace: Any) -> None:
+        original_update(trace)
+        retriever.on_trace_updated(trace)
+
+    def wrapped_batch_update(traces: list) -> None:
+        original_batch_update(traces)
+        for t in traces:
+            retriever.on_trace_updated(t)
+
+    def wrapped_remove(trace_id: str) -> None:
+        original_remove(trace_id)
+        retriever.on_trace_removed(trace_id)
+
+    store.add = wrapped_add
+    store.update = wrapped_update
+    store.batch_update = wrapped_batch_update
+    store.remove = wrapped_remove
