@@ -46,6 +46,8 @@ class L2Setup:
     metrics_l2: OrchestrationMetricsL2
     worker: L2EvolutionWorker
     task_queue: "queue.Queue"
+    # L3 eval setup (None when config.l3.enabled=false, L2 behavior unchanged)
+    l3_setup: Any = None
 
 
 def setup_l2(
@@ -80,6 +82,20 @@ def setup_l2(
     )
 
     # PromotionGate (no evaluator for MVP floor eval)
+    # L3 启用时注入 bridge（lazy import 避免 L2→L3 依赖）
+    bridge: Any = None
+    if config.l3.enabled:
+        from poirot.backend.agents.multiagent.eval.bridge import OrchestrationBridge
+        from poirot.backend.agents.multiagent.eval.registry import SpecialistEvalRegistry
+        from poirot.backend.agents.multiagent.eval.adapters.programmatic import ProgrammaticAdapter
+        from poirot.backend.agents.multiagent.eval.adapters.llm_judge import LLMJudgeAdapter
+        from poirot.backend.agents.multiagent.eval.adapters.longitudinal_pairs import LongitudinalPairsAdapter
+        registry = SpecialistEvalRegistry()
+        registry.register("programmatic", ProgrammaticAdapter(evaluator=None))
+        registry.register("llm_judge", LLMJudgeAdapter(judge_fn=None))
+        registry.register("longitudinal_pairs", LongitudinalPairsAdapter(evaluator=None))
+        bridge = OrchestrationBridge(adapter_registry=registry)
+
     gate = PromotionGate(
         evaluator=None,
         version_dag=version_dag,
@@ -87,6 +103,7 @@ def setup_l2(
         eval_sample_min=config.l2.eval_sample_min,
         eval_sample_max=config.l2.eval_sample_max,
         eval_task_max_reuse=config.l2.eval_task_max_reuse,
+        bridge=bridge,
     )
 
     # TriggerManager (4 sources + 1h cooldown + per-profile serial)
@@ -135,6 +152,12 @@ def setup_l2(
         cron_interval_seconds=config.l2.cron_interval_hours * 3600.0,
     )
 
+    # L3 eval setup (config.l3.enabled=false -> None, L2 behavior unchanged)
+    l3_setup: Any = None
+    if config.l3.enabled:
+        from poirot.backend.agents.multiagent.eval.bootstrap import setup_l3
+        l3_setup = setup_l3(config, metrics_store, task_queue)
+
     return L2Setup(
         version_dag=version_dag,
         promotion_gate=gate,
@@ -145,6 +168,7 @@ def setup_l2(
         metrics_l2=metrics_l2,
         worker=worker,
         task_queue=task_queue,
+        l3_setup=l3_setup,
     )
 
 
