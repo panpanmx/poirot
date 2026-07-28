@@ -152,6 +152,8 @@ class AppRuntime:
             skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
             specialist_tools=list(self.multiagent_setup.specialist_tools) if self.multiagent_setup else None,
             orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
+            memory_provider=getattr(self.capability_registry, "memory_provider", None),
+            memory_config=self.config.memory,
         )
         self.thread_journal.append("mode.switched", {
             "expert_mode": expert_mode,
@@ -191,6 +193,8 @@ class AppRuntime:
             skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
             specialist_tools=list(self.multiagent_setup.specialist_tools) if self.multiagent_setup else None,
             orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
+            memory_provider=getattr(self.capability_registry, "memory_provider", None),
+            memory_config=self.config.memory,
         )
         self.thread_journal.append("mcp.tools_reloaded", {"thread_id": self.thread_id})
         return AppRuntime(
@@ -247,6 +251,8 @@ class AppRuntime:
             skill_metrics_middleware=self.skill_manager.get_metrics_middleware() if self.skill_manager else None,
             specialist_tools=list(self.multiagent_setup.specialist_tools) if self.multiagent_setup else None,
             orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
+            memory_provider=getattr(self.capability_registry, "memory_provider", None),
+            memory_config=self.config.memory,
         )
         self.thread_journal.append("model.switched", {
             "provider": provider,
@@ -594,6 +600,8 @@ def bootstrap_runtime(
             skill_metrics_middleware=skill_metrics_middleware,
             specialist_tools=None,              # leaf 不能再 delegate
             orchestration_middleware=None,     # leaf 不挂 OrchestrationMiddleware
+            memory_provider=memory_provider,
+            memory_config=config.memory,
         )
 
     ma_setup = setup_multiagent(
@@ -624,6 +632,8 @@ def bootstrap_runtime(
         skill_metrics_middleware=skill_metrics_middleware,
         specialist_tools=list(ma_setup.specialist_tools) if ma_setup.specialist_tools else None,
         orchestration_middleware=ma_setup.orchestration_middleware,
+        memory_provider=memory_provider,
+        memory_config=config.memory,
     )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,

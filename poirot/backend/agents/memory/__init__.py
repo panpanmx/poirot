@@ -8,7 +8,8 @@ Layer 1 完整设计 + `49-memory-l2-default-strategies.md` Layer 2 完整设计
 三层解耦架构（north-star）：
 - Layer 1（已落地）：基础可用性层（Schema + 9 Protocol + 状态接入 + Registry slot）
 - Layer 2（已落地）：记忆管理层（默认策略实现：EbbinghausDecayPolicy / CompositeForgetPolicy / DefaultMemoryManager）
-- Layer 3（本模块当前状态）：存储检索层（MarkdownFileStore + HybridRetriever）
+- Layer 3（已落地）：存储检索层（MarkdownFileStore + HybridRetriever）
+- Layer 4（本模块当前状态）：中间件接入与 bootstrap 装配（MemoryMiddleware + bootstrap lifecycle）
 - Layer 4：集成层（MemoryMiddleware + bootstrap + 5 处 make_lead_agent 透传）
 - Layer 5：演化层（Phase 2 LLM 决策 cron）
 - Layer 6：扩展层（adapter 具体实现 + Persona）
@@ -16,7 +17,7 @@ Layer 1 完整设计 + `49-memory-l2-default-strategies.md` Layer 2 完整设计
 依赖方向：`app → agents/memory → (agents/capabilities, agents/state, agents/config)`。
 memory 包不反向依赖 `app`；跨层用 Protocol 破循环（boundary §3.1）。
 
-INVARIANT（L1+L2+L3 合并，分 L1/L2/L3 段）：
+INVARIANT（L1+L2+L3+L4 合并，分 L1/L2/L3/L4 段）：
 
 ## L1 不变量（16 条）
 
@@ -97,6 +98,21 @@ INVARIANT（L1+L2+L3 合并，分 L1/L2/L3 段）：
 10. **无 vector/graph**：HybridRetriever 纯 BM25，不依赖 adapters（空壳保留 Layer 6）
 11. **storage_path 锚定**（01 D12）：相对路径锚定（L3 cwd fallback，Layer 4 bootstrap 传绝对路径）
 12. **解析容错**（2A）：frontmatter 损坏 log + 跳过，不崩（最终一致）
+
+## L4 不变量（11 条，中间件接入与 bootstrap 装配层，承接 53 §8）
+
+1. **记忆是 middleware**：MemoryMiddleware 挂载，不进 leader agent 主体（00 D9）
+2. **不进 system prompt cache**：per-call HumanMessage(hide_from_ui=True)，
+   recalled_memories 只存索引（00 D10）
+3. **挂载顺序**：Sandbox 后，HelpRequest/ToolCall 前（记忆引用 sandbox 结果，不进 tool pairing）
+4. **set_turn_id 注入/清除**：before_model 注入，after_model 清除（traceability C）
+5. **懒加载双检锁**：get_memory_provider 线程安全
+6. **shutdown duck-type**：hasattr(provider, "shutdown") 委托 store/retriever
+7. **store 包装 5B**：add/update/remove 后调 retriever.on_trace_*（装饰器，不改 store 类）
+8. **5 处透传**：make_lead_agent 5 调用点都透传 memory_provider（漏传该路径记忆丢失）
+9. **storage_path 锚定**：_resolve_relative_paths 锚定 _PROJECT_ROOT（01 D12）
+10. **import 防火墙**：memory/middleware.py + bootstrap.py 不 import app（00 D12）
+11. **向后兼容**：use="" 默认禁用，行为不变；memory_provider=None 不挂载
 """
 
 from __future__ import annotations
