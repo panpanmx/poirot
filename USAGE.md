@@ -14,6 +14,8 @@
 - [Launch Modes](#launch-modes)
 - [Commands](#commands)
 - [Skill System](#skill-system)
+- [Long-Term Memory](#long-term-memory)
+- [Multi-Agent](#multi-agent)
 - [Sandbox](#sandbox)
 - [MCP Tools](#mcp-tools)
 - [Model & Provider Switching](#model--provider-switching)
@@ -180,6 +182,29 @@ POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:
 | `POIROT_SKILL_EVAL_SKIP_NO_SKILL` | Skip eval when no skill injected | `true` |
 | `POIROT_SKILL_EVAL_RUNTIME_WINDOW` | RuntimeTracker window | `20` |
 | `POIROT_SKILL_EVAL_DEGRADATION_DELTA` | Degradation delta threshold | `0.15` |
+
+### Memory
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POIROT_MEMORY_USE` | Memory provider (empty = disabled) | empty |
+| `POIROT_MEMORY_STORAGE_PATH` | Markdown truth source path | `.poirot/memory` |
+| `POIROT_MEMORY_ENABLE_RECALL` | before_model recall | `true` |
+| `POIROT_MEMORY_TOKEN_BUDGET` | Recall token budget | `2000` |
+| `POIROT_MEMORY_PHASE2_ENABLED` | L5 auto-consolidation | `false` |
+| `POIROT_MEMORY_PHASE2_TURNS` | Consolidation every N turns | `10` |
+
+### Multi-Agent
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POIROT_MULTIAGENT_ENABLED` | Multi-agent switch | `true` |
+| `POIROT_MULTIAGENT_SPECIALISTS` | Specialist list | `pi,codex,claude,subagent` |
+| `POIROT_MULTIAGENT_AUTO_APPROVE` | Auto-approve calls | `true` |
+| `POIROT_MULTIAGENT_PI_PROVIDER` | Pi provider (deepseek/openai/...) | empty |
+| `POIROT_MULTIAGENT_PI_API_KEY` | Pi API key (empty = auto-scan env) | empty |
+| `POIROT_MULTIAGENT_L2_ENABLED` | L2 evolution layer | `false` |
+| `POIROT_MULTIAGENT_L3_ENABLED` | L3 eval layer | `false` |
 
 ---
 
@@ -400,6 +425,93 @@ Poirot ships with 36 builtin skills across 5 categories:
 | productivity | 2 | code-documentation, ppt-generation |
 
 > Core skills auto-load on startup. Others are discoverable via `/skill search <query>`.
+
+---
+
+## Long-Term Memory
+
+Poirot implements a 5-layer long-term memory system. Memory traces are stored as Markdown (`traces.md`) — the truth source — with BM25 retrieval and Ebbinghaus decay.
+
+### Enable
+
+```env
+POIROT_MEMORY_USE=default
+```
+
+### Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POIROT_MEMORY_USE` | Memory provider (empty = disabled, `default` = enabled) | empty |
+| `POIROT_MEMORY_STORAGE_PATH` | Markdown truth source directory | `.poirot/memory` |
+| `POIROT_MEMORY_ENABLE_RECALL` | before_model recall injection | `true` |
+| `POIROT_MEMORY_ENABLE_EXTRACT` | after_model real-time extraction | `false` |
+| `POIROT_MEMORY_TOKEN_BUDGET` | Recall injection token budget | `2000` |
+| `POIROT_MEMORY_PHASE2_ENABLED` | L5 auto-consolidation worker | `false` |
+| `POIROT_MEMORY_PHASE2_TURNS` | Consolidation trigger every N turns | `10` |
+
+### How It Works
+
+1. **Recall (L4)** — Every `before_model`, `MemoryMiddleware` retrieves relevant memories via BM25, injects them as a per-call `HumanMessage` (protects prompt caching), and writes `recalled_memories` index to state.
+2. **Consolidation (L5)** — Every N turns, `MemoryConsolidationMiddleware` non-blocking submits a task to `MemoryWorker` (daemon thread). The worker calls LLM to extract episodic memories → `encode` → if candidates ≥ N, calls LLM to merge → `consolidate`.
+3. **Persistence** — All traces stored in `.poirot/memory/traces.md` (YAML frontmatter + content, `<!-- trace: {id} -->` separators).
+4. **Decay** — Ebbinghaus formula computed lazily at retrieve time (no background tasks). Forgotten traces marked `metadata.forgotten=True`, filtered by retriever (not deleted).
+
+### Observability
+
+- `.poirot/memory/traces.md` — all memory traces (truth source)
+- Journal events: `memory.encode`, `memory.consolidate`, `memory.reconsolidate`, `memory.associate`
+- Worker actor in operation_log: `worker:{thread_id}:{turn_count}`
+
+---
+
+## Multi-Agent
+
+Poirot can delegate sub-tasks to external coding agents (specialists) and internal self-copies (subagents).
+
+### Enable
+
+```env
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_SPECIALISTS=pi,codex,claude,subagent
+```
+
+### Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POIROT_MULTIAGENT_ENABLED` | Multi-agent master switch | `true` |
+| `POIROT_MULTIAGENT_SPECIALISTS` | Specialist list (comma-separated) | `pi,codex,claude,subagent` |
+| `POIROT_MULTIAGENT_AUTO_APPROVE` | Auto-approve specialist calls | `true` |
+| `POIROT_MULTIAGENT_L2_ENABLED` | L2 evolution layer | `false` |
+| `POIROT_MULTIAGENT_L3_ENABLED` | L3 eval layer | `false` |
+
+### Pi Specialist (own API key, no login)
+
+Pi supports multiple providers — your existing DeepSeek key works directly:
+
+```env
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-your-deepseek-key
+```
+
+Install pi CLI: `npm install -g @earendil-works/pi-coding-agent --ignore-scripts`
+
+Poirot auto-detects `DEEPSEEK_API_KEY` if provider/api_key not explicitly set.
+
+### Codex / Claude Specialists
+
+Require their respective CLI + platform credentials:
+- Codex: `npm install -g @openai/codex` → `codex login` → `~/.codex/auth.json`
+- Claude: `npm install -g @anthropic-ai/claude-code` → `claude` login → `~/.claude/.credentials.json`
+
+> These CLIs are platform-bound (OpenAI / Anthropic). For own API key coding, use Pi specialist.
+
+### Shared Sandbox
+
+Specialists and subagents share the lead agent's Docker sandbox:
+- **Subagent**: `SandboxMiddleware.abefore_model` restores ContextVar from `state["sandbox"]` — reuses parent `sandbox_id`
+- **Specialist**: MCP command includes `--sandbox-url` — specialist connects to lead's Docker container via HTTP
 
 ---
 

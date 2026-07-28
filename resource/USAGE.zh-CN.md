@@ -14,6 +14,8 @@
 - [启动方式](#启动方式)
 - [命令参考](#命令参考)
 - [Skill 系统](#skill-系统)
+- [长期记忆](#长期记忆)
+- [多 Agent](#多-agent)
 - [Sandbox 沙箱](#sandbox-沙箱)
 - [MCP 工具配置](#mcp-工具配置)
 - [模型与 Provider 切换](#模型与-provider-切换)
@@ -341,6 +343,68 @@ Poirot 内置 36 个 skill，分 5 类：
 | productivity | 2 | code-documentation, ppt-generation |
 
 > Core 类自动加载，其余通过 `/skill search <query>` 发现。
+
+---
+
+## 长期记忆
+
+Poirot 实现了 5 层长期记忆系统。记忆 trace 以 Markdown（`traces.md`）存储 — truth source — 配合 BM25 检索和艾宾浩斯衰减。
+
+### 启用
+
+```env
+POIROT_MEMORY_USE=default
+```
+
+### 配置
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `POIROT_MEMORY_USE` | 记忆 provider（空=禁用，`default`=启用） | 空 |
+| `POIROT_MEMORY_STORAGE_PATH` | Markdown truth source 目录 | `.poirot/memory` |
+| `POIROT_MEMORY_ENABLE_RECALL` | before_model 召回注入 | `true` |
+| `POIROT_MEMORY_TOKEN_BUDGET` | 召回注入 token 预算 | `2000` |
+| `POIROT_MEMORY_PHASE2_ENABLED` | L5 自动沉淀 worker | `false` |
+| `POIROT_MEMORY_PHASE2_TURNS` | 每 N 轮触发沉淀 | `10` |
+
+### 工作原理
+
+1. **召回（L4）** — 每次 `before_model`，MemoryMiddleware 通过 BM25 检索相关记忆，注入为 per-call HumanMessage（保护 prompt caching）。
+2. **沉淀（L5）** — 每 N 轮，MemoryConsolidationMiddleware 非阻塞提交任务到 MemoryWorker（daemon 线程）。worker 调 LLM 抽取 episodic 记忆 → encode → 候选 ≥ N → LLM 合并 → consolidate。
+3. **持久化** — 所有 trace 存储在 `.poirot/memory/traces.md`（YAML frontmatter + 正文）。
+4. **衰减** — 艾宾浩斯公式在检索时懒计算（无后台任务）。遗忘的 trace 标记 `metadata.forgotten=True`，retriever 过滤（不删除）。
+
+---
+
+## 多 Agent
+
+Poirot 可以将子任务委派给外部 coding agent（specialist）和内部自身副本（subagent）。
+
+### 启用
+
+```env
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_SPECIALISTS=pi,codex,claude,subagent
+```
+
+### 配置
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `POIROT_MULTIAGENT_ENABLED` | 多 Agent 总开关 | `true` |
+| `POIROT_MULTIAGENT_SPECIALISTS` | specialist 列表（逗号分隔） | `pi,codex,claude,subagent` |
+| `POIROT_MULTIAGENT_AUTO_APPROVE` | 自动批准 specialist 调用 | `true` |
+| `POIROT_MULTIAGENT_L2_ENABLED` | L2 演化层 | `false` |
+| `POIROT_MULTIAGENT_L3_ENABLED` | L3 评估层 | `false` |
+
+### Pi Specialist（自带 API key，无需登录）
+
+Pi 支持多 provider — 你现有的 DeepSeek key 直接可用：
+
+```env
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEYMiddleware.abefore_model 从 state["sandbox"] 恢复 ContextVar — 复用父 sandbox_id
+- **Specialist**：MCP 命令包含 `--sandbox-url` — specialist 通过 HTTP 连接 lead 的 Docker 容器
 
 ---
 

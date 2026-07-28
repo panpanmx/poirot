@@ -14,6 +14,8 @@
 - [起動モード](#起動モード)
 - [コマンド](#コマンド)
 - [Skillシステム](#skillシステム)
+- [長期記憶](#長期記憶)
+- [マルチエージェント](#マルチエージェント)
 - [Sandbox](#sandbox)
 - [MCPツール](#mcpツール)
 - [モデル・プロバイダー切替](#モデルプロバイダー切替)
@@ -340,6 +342,75 @@ Poirotは5カテゴリ36個のbuiltin Skillを同梱：
 | productivity | 2 | code-documentation, ppt-generation |
 
 > Coreカテゴリは自動ロード。その他は`/skill search <query>`で発見。
+
+---
+
+## 長期記憶
+
+Poirotは5層の長期記憶システムを実装しています。記憶トレースはMarkdown（`traces.md`）に保存 — truth source — BM25検索とエビングハウス忘却曲線を組み合わせています。
+
+### 有効化
+
+```env
+POIROT_MEMORY_USE=default
+```
+
+### 設定
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `POIROT_MEMORY_USE` | 記憶プロバイダー（空=無効、`default`=有効） | 空 |
+| `POIROT_MEMORY_STORAGE_PATH` | Markdown truth source ディレクトリ | `.poirot/memory` |
+| `POIROT_MEMORY_ENABLE_RECALL` | before_model リコール注入 | `true` |
+| `POIROT_MEMORY_TOKEN_BUDGET` | リコール注入トークン予算 | `2000` |
+| `POIROT_MEMORY_PHASE2_ENABLED` | L5 自動統合ワーカー | `false` |
+| `POIROT_MEMORY_PHASE2_TURNS` | Nターンごとに統合トリガー | `10` |
+
+### 仕組み
+
+1. **リコール（L4）** — 各 `before_model` で、MemoryMiddleware が BM25 で関連記憶を検索し、per-call HumanMessage として注入（プロンプトキャッシュを保護）。
+2. **統合（L5）** — Nターンごとに、MemoryConsolidationMiddleware が非ブロッキングでタスクを MemoryWorker（デーモンスレッド）に送信。ワーカーが LLM でエピソード記憶を抽出 → encode → 候補 ≥ N → LLM で統合 → consolidate。
+3. **永続化** — 全トレースは `.poirot/memory/traces.md` に保存。
+4. **忘却** — エビングハウス式を取得時に遅延計算（バックグラウンドタスクなし）。忘却トレースは `metadata.forgotten=True` でマーク、retriever がフィルタ（削除なし）。
+
+---
+
+## マルチエージェント
+
+Poirotはサブタスクを外部コーディングエージェント（specialist）と内部自己コピー（subagent）に委譲できます。
+
+### 有効化
+
+```env
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_SPECIALISTS=pi,codex,claude,subagent
+```
+
+### 設定
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `POIROT_MULTIAGENT_ENABLED` | マルチエージェントマスタースイッチ | `true` |
+| `POIROT_MULTIAGENT_SPECIALISTS` | specialistリスト（カンマ区切り） | `pi,codex,claude,subagent` |
+| `POIROT_MULTIAGENT_AUTO_APPROVE` | specialist呼び出し自動承認 | `true` |
+| `POIROT_MULTIAGENT_L2_ENABLED` | L2 進化レイヤー | `false` |
+| `POIROT_MULTIAGENT_L3_ENABLED` | L3 評価レイヤー | `false` |
+
+### Pi Specialist（独自APIキー、ログイン不要）
+
+Pi は複数プロバイダーをサポート — 既存の DeepSeek キーがそのまま使えます：
+
+```env
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-your-deepseek-key
+```
+
+Pi CLI インストール: `npm install -g @earendil-works/pi-coding-agent --ignore-scripts`
+
+### 共有サンドボックス
+
+- **Subagent**: SandboxMiddleware.abefore_model が state["sandbox"] から ContextVar を復元 — 親の sandbox_id を再利用
+- **Specialist**: MCP コマンドに `--sandbox-url` を含む — specialist が HTTP でリードの Docker コンテナに接続
 
 ---
 
