@@ -42,8 +42,12 @@ class Sandbox:
     def get_host_path(self, virtual_path: str) -> str:
         """虚拟路径 → 宿主物理路径（供外部复制/注册 artifact 用）。
 
-        走 translator.translate_path 但不做 guard.validate（调用方负责路径安全）。
+        优先调 translator.reverse_translate（DockerPathTranslator 有）；
+        fallback translate_path（IdentityTranslator / LocalPathTranslator 无 reverse）。
+        不做 guard.validate（调用方负责路径安全）。
         """
+        if hasattr(self._translator, "reverse_translate"):
+            return self._translator.reverse_translate(virtual_path)
         return self._translator.translate_path(virtual_path)
 
     def execute_command(self, command: str) -> str:

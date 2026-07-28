@@ -1,7 +1,7 @@
 """DockerSandboxProvider — Docker 容器生命周期管理 + warm_pool + idle_checker。
 
 实现 SandboxProvider ABC。编排 LocalContainerBackend（基础设施 CRUD）
-+ DockerRuntime（HTTP 调容器）+ IdentityTranslator + PermissiveGuard。
++ DockerRuntime（HTTP 调容器）+ DockerPathTranslator + DockerPathGuard。
 """
 
 from __future__ import annotations
@@ -28,11 +28,7 @@ from poirot.backend.agents.sandbox.docker.readiness import (
     wait_for_sandbox_ready_async,
 )
 from poirot.backend.agents.sandbox.guards.audit_guard import AuditGuard
-from poirot.backend.agents.sandbox.guards.permissive_guard import PermissiveGuard
 from poirot.backend.agents.sandbox.sandbox import Sandbox
-from poirot.backend.agents.sandbox.translators.identity_translator import (
-    IdentityTranslator,
-)
 from poirot.backend.agents.sandbox.types import PathMapping, SandboxInfo
 from poirot.backend.agents.sandbox.utils.sandbox_id import validate_sandbox_id
 
@@ -60,7 +56,7 @@ class DockerSandboxProvider(SandboxProvider):
     - 跨进程锁：3 函数（open/lock/unlock），无 context manager
     - readiness 60s 超时，失败 destroy + raise
     - 信号处理：atexit（Stage 4）+ SIGTERM/SIGINT/SIGHUP（Docker 专用）
-    - 构造 Sandbox(DockerRuntime + IdentityTranslator + PermissiveGuard)
+    - 构造 Sandbox(DockerRuntime + DockerPathTranslator + DockerPathGuard)
     - path_mappings 不作为 extra_mounts（父 bind mount 覆盖），仅传 config.sandbox.mounts
     - sandbox_root = .poirot/sandbox/aio_docker/（类型分层）
     - thread_id 必传
@@ -245,8 +241,16 @@ class DockerSandboxProvider(SandboxProvider):
 
     def _make_sandbox(self, sandbox_id: str, info: SandboxInfo) -> Sandbox:
         from poirot.backend.agents.sandbox.runtimes.docker_runtime import DockerRuntime
+        from poirot.backend.agents.sandbox.translators.docker_path_translator import (
+            DockerPathTranslator,
+        )
+        from poirot.backend.agents.sandbox.guards.docker_path_guard import (
+            DockerPathGuard,
+        )
         runtime = DockerRuntime(info.sandbox_url)
-        return Sandbox(sandbox_id, runtime, IdentityTranslator(), AuditGuard(PermissiveGuard()))
+        translator = DockerPathTranslator(self._sandbox_root, sandbox_id)
+        guard = AuditGuard(DockerPathGuard())
+        return Sandbox(sandbox_id, runtime, translator, guard)
 
     def _register(
         self, thread_id: str, sandbox_id: str, info: SandboxInfo, user_id: str,
