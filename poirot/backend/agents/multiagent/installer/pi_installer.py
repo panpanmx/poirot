@@ -97,11 +97,17 @@ class PiInstaller:
 
         决策 2：装到与 Poirot 相同环境（沙箱镜像或 WSL2）。
         装完写 flag file，下次启动 pi specialist 自动可用。
+        Windows 兼容：npm 是 .cmd 文件，subprocess 需 shell=True 或全路径。
         """
         try:
+            npm_path = shutil.which("npm")
+            if not npm_path:
+                self._install_status = "failed"
+                logger.error("[PiSpecialist] npm not found in PATH")
+                return
             result = subprocess.run(
                 [
-                    "npm",
+                    npm_path,
                     "install",
                     "-g",
                     "--ignore-scripts",  # Pi 官方推荐，不跑 lifecycle scripts
