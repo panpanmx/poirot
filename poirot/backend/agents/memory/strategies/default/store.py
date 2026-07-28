@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
-from dataclasses import asdict
+import time
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +35,7 @@ from poirot.backend.agents.memory.schema import (
     MemoryType,
     OperationLog,
 )
+from poirot.backend.agents.memory.types import MemoryFilter
 
 logger = logging.getLogger(__name__)
 
@@ -252,3 +253,76 @@ class MarkdownFileStore:
             f.write("# Memory Traces\n\n")
             for trace in self._traces.values():
                 f.write(f"<!-- trace: {trace.id} -->\n{self._serialize_trace(trace)}\n\n")
+
+    def update(self, trace: MemoryTrace) -> None:
+        """更新记忆（frozen 语义：替换）。trace.id 不存在抛 MemoryNotFoundError。
+
+        6B 文件锁保护：并发 update 序列化，防丢更新。
+        """
+        with self._lock:
+            if trace.id not in self._traces:
+                raise MemoryNotFoundError(trace.id)
+            self._traces[trace.id] = trace
+            self._rewrite_file()
+
+    def batch_update(self, traces: list[MemoryTrace]) -> None:
+        """批量更新（F2 决策，consolidate 标记 N 条旧 trace forgotten 用）。
+
+        原子性：任一 trace.id 不存在抛 MemoryNotFoundError（全成功或全失败）。
+        一次 _rewrite_file 全量重写（非 N 次 O(N²)）。
+        6B 文件锁保护（与 update 同锁）。
+        """
+        with self._lock:
+            for trace in traces:
+                if trace.id not in self._traces:
+                    raise MemoryNotFoundError(trace.id)
+            for trace in traces:
+                self._traces[trace.id] = trace
+            self._rewrite_file()
+
+    def remove(self, trace_id: str) -> None:
+        """删除记忆。不存在静默（幂等）。"""
+        with self._lock:
+            if trace_id in self._traces:
+                del self._traces[trace_id]
+                self._rewrite_file()
+
+    def list_by_type(self, type: MemoryType) -> list[MemoryTrace]:
+        """按类型列出。"""
+        type_key = type.value if isinstance(type, MemoryType) else str(type)
+        return [t for t in self._traces.values() if t.type.value == type_key]
+
+    def list_by_filter(self, filter: MemoryFilter) -> list[MemoryTrace]:
+        """按过滤器列出（7A 粗筛 + 调用方精算 strength）。
+
+        7A：store 只按 max_age_hours / type / metadata 粗筛（内存索引），
+        strength 精算由调用方（forget_policy）逐条 compute_strength。
+        """
+        result = list(self._traces.values())
+        # type 过滤
+        if filter.type_filter is not None:
+            type_key = (
+                filter.type_filter.value
+                if isinstance(filter.type_filter, MemoryType)
+                else str(filter.type_filter)
+            )
+            result = [t for t in result if t.type.value == type_key]
+        # max_age_hours 粗筛（按 last_accessed，<=0 用 created_at，7A）
+        if filter.max_age_hours is not None:
+            now = time.time()
+            max_age_seconds = filter.max_age_hours * 3600.0
+            result = [
+                t for t in result
+                if (now - (t.last_accessed if t.last_accessed > 0 else t.created_at)) <= max_age_seconds
+            ]
+        # metadata 过滤（全匹配）
+        if filter.metadata_filter:
+            result = [
+                t for t in result
+                if all(t.metadata.get(k) == v for k, v in filter.metadata_filter.items())
+            ]
+        return result
+
+    def list_all(self) -> list[MemoryTrace]:
+        """列出全部。"""
+        return list(self._traces.values())
