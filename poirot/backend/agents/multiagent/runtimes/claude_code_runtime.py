@@ -19,6 +19,7 @@ from poirot.backend.agents.multiagent.exceptions import (
     SpecialistStartupError,
     SpecialistTimeoutError,
 )
+from poirot.backend.agents.multiagent.runtimes import append_sandbox_url_args
 from poirot.backend.agents.multiagent.types import (
     SpecialistRawResult,
     SpecialistRequest,
@@ -31,8 +32,11 @@ class ClaudeCodeRuntime:
     sync only MVP（INV#5）。每次 invoke 启动新进程。
     """
 
-    def __init__(self, command: str = "claude") -> None:
+    def __init__(
+        self, command: str = "claude", sandbox_provider=None
+    ) -> None:
         self._command = command
+        self._sandbox_provider = sandbox_provider
 
     def invoke(self, request: SpecialistRequest) -> SpecialistRawResult:
         start = time.time()
@@ -98,7 +102,7 @@ class ClaudeCodeRuntime:
 
     def _build_mcp_add_command(self, sandbox_id: str) -> list[str]:
         """Build `claude mcp add` command for SpecialistMcpServer."""
-        return [
+        cmd = [
             self._command,
             "mcp",
             "add",
@@ -110,6 +114,8 @@ class ClaudeCodeRuntime:
             "--sandbox-id",
             sandbox_id,
         ]
+        append_sandbox_url_args(cmd, self._sandbox_provider, sandbox_id)
+        return cmd
 
     def configure_mcp(self, sandbox_id: str) -> None:
         """Run `claude mcp add` to register SpecialistMcpServer.

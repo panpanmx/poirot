@@ -21,6 +21,7 @@ from poirot.backend.agents.multiagent.exceptions import (
     SpecialistStartupError,
     SpecialistTimeoutError,
 )
+from poirot.backend.agents.multiagent.runtimes import append_sandbox_url_args
 from poirot.backend.agents.multiagent.types import (
     SpecialistRawResult,
     SpecialistRequest,
@@ -37,9 +38,11 @@ class CodexRuntime:
         self,
         command: str = "npx",
         args: tuple[str, ...] = ("-y", "@zed-industries/codex-acp"),
+        sandbox_provider=None,
     ) -> None:
         self._command = command
         self._args = args
+        self._sandbox_provider = sandbox_provider
 
     def invoke(self, request: SpecialistRequest) -> SpecialistRawResult:
         start = time.time()
@@ -123,17 +126,19 @@ class CodexRuntime:
         """Build MCP servers config for ACP new_session (includes SpecialistMcpServer)."""
         if sandbox_id is None:
             return []
+        args = [
+            "-m",
+            "poirot.backend.agents.multiagent.mcp.specialist_mcp_server",
+            "--sandbox-id",
+            sandbox_id,
+        ]
+        append_sandbox_url_args(args, self._sandbox_provider, sandbox_id)
         return [
             {
                 "name": "poirot_sandbox",
                 "type": "stdio",
                 "command": "python",
-                "args": [
-                    "-m",
-                    "poirot.backend.agents.multiagent.mcp.specialist_mcp_server",
-                    "--sandbox-id",
-                    sandbox_id,
-                ],
+                "args": args,
             }
         ]
 

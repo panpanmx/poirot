@@ -26,6 +26,7 @@ from poirot.backend.agents.multiagent.exceptions import (
     SpecialistStartupError,
     SpecialistTimeoutError,
 )
+from poirot.backend.agents.multiagent.runtimes import append_sandbox_url_args
 from poirot.backend.agents.multiagent.types import (
     SpecialistRawResult,
     SpecialistRequest,
@@ -62,8 +63,9 @@ class PiRuntime:
     所有操作走 Poirot MCP 8 接口（经过 PathTranslator + SecurityGuard）。
     """
 
-    def __init__(self, config: PiRuntimeConfig | None = None) -> None:
+    def __init__(self, config: PiRuntimeConfig | None = None, sandbox_provider=None) -> None:
         self._config = config or PiRuntimeConfig()
+        self._sandbox_provider = sandbox_provider
 
     def invoke(self, request: SpecialistRequest) -> SpecialistRawResult:
         start = time.time()
@@ -264,12 +266,17 @@ class PiRuntime:
         """解析 Poirot SpecialistMcpServer endpoint（sandbox_id 绑定）。
 
         MVP：返回 SpecialistMcpServer 的 stdio 启动命令（pi extension 通过此命令连接）。
-        进阶：可改为 TCP/HTTP endpoint。
+        块 D3：若 sandbox_provider 有 SandboxInfo，追加 --sandbox-url + --sandbox-root。
         """
-        return (
-            f"python -m poirot.backend.agents.multiagent.mcp.specialist_mcp_server "
-            f"--sandbox-id {sandbox_id}"
-        )
+        parts = [
+            "python",
+            "-m",
+            "poirot.backend.agents.multiagent.mcp.specialist_mcp_server",
+            "--sandbox-id",
+            sandbox_id,
+        ]
+        append_sandbox_url_args(parts, self._sandbox_provider, sandbox_id)
+        return " ".join(parts)
 
     def _poirot_extension_path(self) -> str:
         """Poirot sandbox bridge extension 路径（随 Poirot 安装）。
