@@ -75,6 +75,48 @@ def set_memory_provider(provider: Any) -> None:
         _memory_provider = provider
 
 
+# ---------------------------------------------------------------------------
+# L5 worker lifecycle（块 C3）
+# ---------------------------------------------------------------------------
+_worker_lock = threading.Lock()
+_memory_worker: Any = None
+
+
+def start_memory_worker(manager: Any, llm: Any) -> Any:
+    """启动 memory worker（daemon 线程）。返 worker 实例。
+
+    幂等：已启动则返既有实例。
+    LLM 注入：调用方传 llm（避免 worker 反向依赖 app）。
+    """
+    global _memory_worker
+    if _memory_worker is not None:
+        return _memory_worker
+    from poirot.backend.agents.memory.worker import MemoryWorker
+    with _worker_lock:
+        if _memory_worker is not None:
+            return _memory_worker
+        worker = MemoryWorker(manager=manager, llm=llm)
+        worker.start()
+        _memory_worker = worker
+        return worker
+
+
+def shutdown_memory_worker(timeout: float = 5.0) -> None:
+    """drain + 关闭 worker。"""
+    global _memory_worker
+    with _worker_lock:
+        if _memory_worker is None:
+            return
+        _memory_worker.shutdown(timeout=timeout)
+        _memory_worker = None
+
+
+def get_memory_worker() -> Any:
+    """取当前 worker 实例（可能为 None）。"""
+    with _worker_lock:
+        return _memory_worker
+
+
 def _load_memory_provider(config: Any) -> Any:
     """反射加载 + build_default_provider + journal 注入。
 
