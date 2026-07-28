@@ -1,9 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="resource/assets/poirot-logo.png">
-  <img alt="Poirot" width="720" src="resource/assets/poirot-logo.png">
-</picture>
+<img alt="Poirot README Hero" width="960" src="resource/assets/poirot-readme-hero.png">
 
 ### A Deep Research Agent Kernel with Long-Term Memory
 
@@ -19,6 +16,11 @@
 </div>
 
 ---
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="resource/assets/poirot-logo.png">
+  <img alt="Poirot" width="720" src="resource/assets/poirot-logo.png">
+</picture>
 
 ## Overview
 
@@ -112,7 +114,7 @@ Skills are **research process knowledge bundles** — prompt-level injections, n
 
 <div align="center">
 
-<img src="resource/assets/poirot-architecture.png" alt="Poirot Architecture" width="880">
+<img src="resource/assets/poirot-architecture-diagram.png" alt="Poirot Architecture" width="880">
 
 </div>
 
