@@ -19,6 +19,9 @@
 - [Sandbox](#sandbox)
 - [MCP Tools](#mcp-tools)
 - [Model & Provider Switching](#model--provider-switching)
+- [Docker Deployment](#docker-deployment)
+- [Configuration Scenarios](#configuration-scenarios)
+- [Usage Tips](#usage-tips)
 - [TUI Guide](#tui-guide)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -644,6 +647,236 @@ poirot --provider qwen --model qwen-max
 | deepseek | deepseek-v4-flash | 200K |
 | openai | gpt-4.1-mini | — |
 | qwen | qwen-plus | — |
+
+---
+
+## Docker Deployment
+
+Poirot ships with a Dockerfile + docker-compose for one-command deployment.
+
+### Quick Start
+
+```bash
+# 1. Copy config
+cp .env.example .env
+# Edit .env — fill in DEEPSEEK_API_KEY=sk-xxx
+
+# 2. Build + run (TUI interactive)
+docker compose run --rm poirot
+
+# 3. Or single research
+docker compose run --rm poirot run "Analyze AI agent trends 2026"
+```
+
+### What's Inside the Image
+
+- Python 3.12 + all dependencies (pyyaml, langchain, etc.)
+- Node.js 20 (for MCP stdio servers + pi coding agent)
+- Default env: `POIROT_MEMORY_USE=default`, `POIROT_MULTIAGENT_ENABLED=true`
+- Local sandbox mode (no DinD required)
+
+### Sandbox in Docker
+
+**Default (Local sandbox)** — agent runs commands inside the Poirot container. No Docker-in-Docker needed. Simple but no isolation.
+
+**Docker sandbox (isolated)** — agent runs commands in a separate sandbox container. Requires Docker socket mount:
+
+```yaml
+# docker-compose.yml — uncomment:
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+```env
+# .env:
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+POIROT_SANDBOX_EXECUTOR=local
+```
+
+### Data Persistence
+
+| Host path | Container path | Content |
+|-----------|---------------|---------|
+| `./.poirot/` | `/app/.poirot/` | DB, logs, artifacts, memory traces, MCP config |
+| `./skills/` | `/app/skills/` | User-uploaded skills |
+| `./.env` | `/app/.env` | Environment config (Ctrl+B panel can write back) |
+
+### Common Commands
+
+```bash
+# TUI mode (default)
+docker compose run --rm poirot
+
+# CLI scrolling mode
+docker compose run --rm poirot cli
+
+# Single research
+docker compose run --rm poirot run "your question"
+
+# Expert mode
+docker compose run --rm poirot --expert
+
+# Rebuild after code changes
+docker compose build
+```
+
+---
+
+## Configuration Scenarios
+
+### Scenario 1: Lightweight Chat (minimal)
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+POIROT_SKILL_ENABLED=false
+POIROT_MCP_ENABLED=false
+POIROT_SANDBOX_USE=
+POIROT_MEMORY_USE=
+POIROT_MULTIAGENT_ENABLED=false
+```
+
+Then `/default` for lightweight mode. No sandbox, no skills, no memory — pure LLM chat.
+
+### Scenario 2: Full Power (all features)
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+
+# Memory (L4 recall + L5 auto-consolidation)
+POIROT_MEMORY_USE=default
+POIROT_MEMORY_PHASE2_ENABLED=true
+POIROT_MEMORY_PHASE2_TURNS=10
+
+# Skill (L1 base + L2 evolution + L3 eval)
+POIROT_SKILL_ENABLED=true
+POIROT_SKILL_EVOLVE_ENABLED=true
+POIROT_SKILL_EVAL_ENABLED=true
+POIROT_SKILL_MAX_INJECT=15
+
+# Multi-Agent (specialist + L2/L3)
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_L2_ENABLED=true
+POIROT_MULTIAGENT_L3_ENABLED=true
+
+# Pi specialist (own DeepSeek key, no login)
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-xxx
+
+# Docker sandbox
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+POIROT_SANDBOX_EXECUTOR=wsl              # Windows + WSL2
+
+# MCP tools
+POIROT_MCP_ENABLED=true
+```
+
+### Scenario 3: Development (local sandbox, no Docker)
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.local.local_sandbox_provider:LocalSandboxProvider
+POIROT_SKILL_ENABLED=true
+POIROT_MEMORY_USE=default
+POIROT_MULTIAGENT_ENABLED=true
+```
+
+### Scenario 4: Coding Agent (pi specialist focus)
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+
+# Pi specialist with DeepSeek
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_SPECIALISTS=pi,subagent
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-xxx
+
+# Sandbox for code execution
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+
+# Skill for coding
+POIROT_SKILL_ENABLED=true
+POIROT_SKILL_MAX_INJECT=15
+```
+
+---
+
+## Usage Tips
+
+### Memory System
+
+**Observe memory in action:**
+- `.poirot/memory/traces.md` — all memory traces (truth source, human-readable Markdown)
+- Journal events in `.poirot/logs/threads/<thread_id>/runs/<run_id>/events.jsonl` — `memory.encode`, `memory.consolidate`, `memory.reconsolidate`
+- Worker actor in operation_log: `worker:{thread_id}:{turn_count}`
+
+**Tune consolidation frequency:**
+```env
+# More frequent (every 5 turns — faster memory building, more LLM cost)
+POIROT_MEMORY_PHASE2_TURNS=5
+
+# Less frequent (every 20 turns — slower, cheaper)
+POIROT_MEMORY_PHASE2_TURNS=20
+```
+
+**Memory doesn't appear?**
+1. Check `POIROT_MEMORY_USE=default` in `.env`
+2. Check `.poirot/memory/traces.md` exists (auto-created on first encode)
+3. First N turns: no consolidation yet (worker triggers at turn N)
+4. Recall needs existing traces — empty store = no recall
+
+### Multi-Agent
+
+**Pi specialist not showing?**
+1. `pi` CLI installed: `pi --version` (or `npm install -g @earendil-works/pi-coding-agent`)
+2. API key available: `DEEPSEEK_API_KEY` in `.env` (auto-detected)
+3. Check startup log for `[PiSpecialist]` messages
+
+**Trigger specialist delegation:**
+- Agent automatically calls `delegate_to_specialist(goal=..., success_criteria=...)` when it determines a sub-task needs a coding specialist
+- `POIROT_MULTIAGENT_AUTO_APPROVE=true` — no human confirmation needed
+- Or manually: type "use pi to write a Python script that..."
+
+**Subagent vs Specialist:**
+- **Subagent** = Poirot self-copy (same LLM, isolated context, shared sandbox) — for sub-tasks within Poirot's capability
+- **Specialist** = External CLI agent (pi/codex/claude, own LLM, shared sandbox) — for coding tasks needing specialized tools
+
+### Skill System
+
+**Only core skills loaded?**
+- By design: only `builtin_skills/core/` auto-loads at startup (12 skills)
+- Other categories (research/creative/software-development/productivity) are searchable via `/skill search <query>` or `skill_search` tool
+- Install externalskill install github:owner/repo`
+
+**Skill search returns empty?**
+- Skill names/descriptions are in English — search with English keywords
+- `skill_search("frontend")` → finds `frontend-design` ✅
+- `skill_search("前端")` → no match ❌ (substring match, no cross-language)
+
+**Increase skill injection:**
+```env
+POIROT_SKILL_MAX_INJECT=15  # default 3, increase for more skills per turn
+```
+
+### Sandbox
+
+**Windows + WSL2 Docker:**
+```env
+POIROT_SANDBOX_EXECUTOR=wsl
+POIROT_SANDBOX_WSL_DISTRO=Ubuntu
+```
+
+**Sandbox directory is empty?**
+- Agent must write to `/mnt/poirot/user-data/` (mount area) — DockerPathGuard enforces this
+- Files outside mount area (e.g. `/tmp`) are lost when container is destroyed (`--rm`)
+- Check `.poirot/sandbox/aio_docker/<sandbox_id>/` on Windows host for persisted files
+- Check `.poirot/outputs/` for extracted artifacts (via `present_files` tool)
+
+**Idle timeout:**
+```env
+POIROT_SANDBOX_IDLE_TIMEOUT=600   # 10 min (default)
+POIROT_SANDBOX_IDLE_TIMEOUT=0     # never auto-destroy
+```
 
 ---
 

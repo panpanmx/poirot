@@ -19,6 +19,9 @@
 - [Sandbox](#sandbox)
 - [MCPツール](#mcpツール)
 - [モデル・プロバイダー切替](#モデルプロバイダー切替)
+- [Docker デプロイ](#docker-デプロイ)
+- [設定シナリオ](#設定シナリオ)
+- [使用ヒント](#使用ヒント)
 - [TUIガイド](#tuiガイド)
 - [トラブルシューティング](#トラブルシューティング)
 - [FAQ](#faq)
@@ -507,6 +510,181 @@ poirot --provider qwen --model qwen-max
 | deepseek | deepseek-v4-flash | 200K |
 | openai | gpt-4.1-mini | — |
 | qwen | qwen-plus | — |
+
+---
+
+## Docker デプロイ
+
+Poirot は Dockerfile + docker-compose でワンコマンドデプロイに対応しています。
+
+### クイックスタート
+
+```bash
+# 1. 設定コピー
+cp .env.example .env
+# .env 編集 — DEEPSEEK_API_KEY=sk-xxx を入力
+
+# 2. ビルド + 実行（TUI 対話）
+docker compose run --rm poirot
+
+# 3. または単発リサーチ
+docker compose run --rm poirot run "AIエージェントトレンド 2026"
+```
+
+### イメージ内容
+
+- Python 3.12 + 全依存関係（pyyaml、langchain 等）
+- Node.js 20（MCP stdio server + pi coding agent）
+- デフォルト有効：`POIROT_MEMORY_USE=default`、`POIROT_MULTIAGENT_ENABLED=true`
+- デフォルト Local sandbox（DinD 不要）
+
+### コンテナ内 Sandbox
+
+**デフォルト（Local sandbox）** — agent は Poirot コンテナ内でコマンド実行。DinD 不要。
+
+**Docker 隔離 sandbox** — agent は独立 sandbox コンテナで実行。docker.sock マウントが必要：
+
+```yaml
+# docker-compose.yml — コメント解除：
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+```env
+# .env：
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+POIROT_SANDBOX_EXECUTOR=local
+```
+
+### データ永続化
+
+| ホストパス | コンテナパス | 内容 |
+|-----------|-------------|------|
+| `./.poirot/` | `/app/.poirot/` | DB、ログ、artifact、memory、MCP 設定 |
+| `./skills/` | `/app/skills/` | ユーザー skill |
+| `./.env` | `/app/.env` | 環境設定（Ctrl+B パネルで書き戻し可能） |
+
+---
+
+## 設定シナリオ
+
+### シナリオ 1：ライトweight チャット（最小構成）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+POIROT_SKILL_ENABLED=false
+POIROT_MCP_ENABLED=false
+POIROT_SANDBOX_USE=
+POIROT_MEMORY_USE=
+POIROT_MULTIAGENT_ENABLED=false
+```
+
+`/default` でライトモードへ。sandbox / skill / memory なし — 純粋な LLM チャット。
+
+### シナリオ 2：フル機能（全フィーチャー有効）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+
+# 記憶（L4 リコール + L5 自動統合）
+POIROT_MEMORY_USE=default
+POIROT_MEMORY_PHASE2_ENABLED=true
+POIROT_MEMORY_PHASE2_TURNS=10
+
+# Skill（L1 + L2 進化 + L3 評価）
+POIROT_SKILL_ENABLED=true
+POIROT_SKILL_EVOLVE_ENABLED=true
+POIROT_SKILL_EVAL_ENABLED=true
+POIROT_SKILL_MAX_INJECT=15
+
+# マルチエージェント（specialist + L2/L3）
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_L2_ENABLED=true
+POIROT_MULTIAGENT_L3_ENABLED=true
+
+# Pi specialist（DeepSeek キー使用、ログイン不要）
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-xxx
+
+# Docker sandbox
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+POIROT_SANDBOX_EXECUTOR=wsl
+
+# MCP ツール
+POIROT_MCP_ENABLED=true
+```
+
+### シナリオ 3：開発モード（Local sandbox、Docker なし）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.local.local_sandbox_provider:LocalSandboxProvider
+POIROT_SKILL_ENABLED=true
+POIROT_MEMORY_USE=default
+POIROT_MULTIAGENT_ENABLED=true
+```
+
+### シナリオ 4：コーディング Agent（pi specialist 重視）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+
+# Pi specialist + DeepSeek
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_SPECIALISTS=pi,subagent
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-xxx
+
+# コード実行 sandbox
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+
+# コーディング skill
+POIROT_SKILL_ENABLED=true
+POIROT_SKILL_MAX_INJECT=15
+```
+
+---
+
+## 使用ヒント
+
+### 記憶システム
+
+**記憶の動作確認：**
+- `.poirot/memory/traces.md` — 全記憶トレース（truth source、人間可読 Markdown）
+- Journal イベント：`.poirot/logs/threads/<thread_id>/runs/<run_id>/events.jsonl` — `memory.encode`、`memory.consolidate`
+- Worker actor：`worker:{thread_id}:{turn_count}`
+
+**統合頻度の調整：**
+```env
+POIROT_MEMORY_PHASE2_TURNS=5   # より頻繁（LLM コスト増）
+POIROT_MEMORY_PHASE2_TURNS=20  # より省コスト
+```
+
+### マルチエージェント
+
+**Pi specialist が表示されない？**
+1. `pi` CLI インストール確認：`pi --version`
+2. API key 確認：`.env` に `DEEPSEEK_API_KEY`
+3. 起動ログの `[PiSpecialist]` メッセージを確認
+
+### Skill システム
+
+**core skill しかロードされない？**
+- 設計通り：起動時に `builtin_skills/core/` のみロード（12 個）
+- その他は `/skill search <query>` で検索
+- `skill_search` は英語キーワードで検索してください
+
+### Sandbox
+
+**Windows + WSL2 Docker：**
+```env
+POIROT_SANDBOX_EXECUTOR=wsl
+POIROT_SANDBOX_WSL_DISTRO=Ubuntu
+```
+
+**Sandbox ディレクトリが空？**
+- Agent は `/mnt/poirot/user-data/` に書き込む必要あり（DockerPathGuard が強制）
+- マウントエリア外のファイルは `--rm` で消失
 
 ---
 

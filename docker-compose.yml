@@ -10,8 +10,14 @@
 #   2. 或在宿主机项目根创建 .env，通过 env_file 注入
 #
 # 数据持久化:
-#   .poirot/ → /app/.poirot（DB、日志、artifact、MCP 配置）
+#   .poirot/ → /app/.poirot（DB、日志、artifact、memory、MCP 配置）
 #   skills/  → /app/skills（用户上传 skill）
+#
+# Sandbox:
+#   容器内默认 Local sandbox（POIROT_SANDBOX_EXECUTOR=local）。
+#   如需 Docker 隔离 sandbox，取消下方 docker.sock 挂载注释 + 改 .env:
+#     POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+#     POIROT_SANDBOX_EXECUTOR=local
 
 services:
   poirot:
@@ -23,10 +29,17 @@ services:
     env_file:
       - path: .env        # 宿主机 .env（不存在则忽略）
         required: false
+    environment:
+      # 容器内默认开启 memory + multiagent（可被 .env 覆盖）
+      - POIROT_MEMORY_USE=default
+      - POIROT_MEMORY_PHASE2_ENABLED=true
+      - POIROT_MULTIAGENT_ENABLED=true
     volumes:
-      - ./.poirot:/app/.poirot   # 运行时数据持久化
+      - ./.poirot:/app/.poirot   # 运行时数据持久化（DB/logs/memory/artifacts）
       - ./skills:/app/skills     # 用户 skill 持久化
       - ./.env:/app/.env         # .env 持久化（Ctrl+B 面板可写回）
+      # Docker sandbox 模式：挂载宿主机 docker.sock（Linux/Mac）
+      # - /var/run/docker.sock:/var/run/docker.sock
     # 默认无 command，走 ENTRYPOINT 的 poirot（TUI 模式）
     # 覆盖示例: docker compose run --rm poirot cli
     #           docker compose run --rm poirot run "研究问题"

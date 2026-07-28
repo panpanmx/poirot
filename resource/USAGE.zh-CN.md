@@ -19,6 +19,9 @@
 - [Sandbox 沙箱](#sandbox-沙箱)
 - [MCP 工具配置](#mcp-工具配置)
 - [模型与 Provider 切换](#模型与-provider-切换)
+- [Docker 部署](#docker-部署)
+- [配置场景](#配置场景)
+- [使用技巧](#使用技巧)
 - [TUI 操作指南](#tui-操作指南)
 - [故障排查](#故障排查)
 - [FAQ](#faq)
@@ -501,6 +504,206 @@ poirot --provider qwen --model qwen-max
 | deepseek | deepseek-v4-flash | 200K |
 | openai | gpt-4.1-mini | — |
 | qwen | qwen-plus | — |
+
+---
+
+## Docker 部署
+
+Poirot 提供 Dockerfile + docker-compose，一键部署。
+
+### 快速启动
+
+```bash
+# 1. 复制配置
+cp .env.example .env
+# 编辑 .env — 填入 DEEPSEEK_API_KEY=sk-xxx
+
+# 2. 构建并运行（TUI 交互）
+docker compose run --rm poirot
+
+# 3. 或单次研究
+docker compose run --rm poirot run "分析 2026 年 AI agent 趋势"
+```
+
+### 镜像内容
+
+- Python 3.12 + 全部依赖（pyyaml、langchain 等）
+- Node.js 20（MCP stdio server + pi coding agent）
+- 默认开启：`POIROT_MEMORY_USE=default`、`POIROT_MULTIAGENT_ENABLED=true`
+- 默认 Local sandbox（无需 DinD）
+
+### 容器内 Sandbox
+
+**默认（Local sandbox）** — agent 在 Poirot 容器内执行命令，无需 DinD。
+
+**Docker 隔离 sandbox** — agent 在独立沙箱容器中执行，需挂载 docker.sock：
+
+```yaml
+# docker-compose.yml — 取消注释：
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+```env
+# .env：
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+POIROT_SANDBOX_EXECUTOR=local
+```
+
+### 数据持久化
+
+| 宿主机路径 | 容器路径 | 内容 |
+|-----------|---------|------|
+| `./.poirot/` | `/app/.poirot/` | DB、日志、artifact、memory traces、MCP 配置 |
+| `./skills/` | `/app/skills/` | 用户上传的 skill |
+| `./.env` | `/app/.env` | 环境配置（Ctrl+B 面板可写回） |
+
+---
+
+## 配置场景
+
+### 场景 1：轻量聊天（最小配置）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+POIROT_SKILL_ENABLED=false
+POIROT_MCP_ENABLED=false
+POIROT_SANDBOX_USE=
+POIROT_MEMORY_USE=
+POIROT_MULTIAGENT_ENABLED=false
+```
+
+然后 `/default` 进入轻量模式。无 sandbox、无 skill、无记忆 — 纯 LLM 对话。
+
+### 场景 2：全功能（所有特性开启）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+
+# 记忆（L4 召回 + L5 自动沉淀）
+POIROT_MEMORY_USE=default
+POIROT_MEMORY_PHASE2_ENABLED=true
+POIROT_MEMORY_PHASE2_TURNS=10
+
+# Skill（L1 基础 + L2 演化 + L3 评估）
+POIROT_SKILL_ENABLED=true
+POIROT_SKILL_EVOLVE_ENABLED=true
+POIROT_SKILL_EVAL_ENABLED=true
+POIROT_SKILL_MAX_INJECT=15
+
+# 多 Agent（specialist + L2/L3）
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_L2_ENABLED=true
+POIROT_MULTIAGENT_L3_ENABLED=true
+
+# Pi specialist（自带 DeepSeek key，无需登录）
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-xxx
+
+# Docker sandbox
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+POIROT_SANDBOX_EXECUTOR=wsl              # Windows + WSL2
+
+# MCP 工具
+POIROT_MCP_ENABLED=true
+```
+
+### 场景 3：开发模式（Local sandbox，无 Docker）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.local.local_sandbox_provider:LocalSandboxProvider
+POIROT_SKILL_ENABLED=true
+POIROT_MEMORY_USE=default
+POIROT_MULTIAGENT_ENABLED=true
+```
+
+### 场景 4：编码 Agent（pi specialist 为主）
+
+```env
+DEEPSEEK_API_KEY=sk-xxx
+
+# Pi specialist + DeepSeek
+POIROT_MULTIAGENT_ENABLED=true
+POIROT_MULTIAGENT_SPECIALISTS=pi,subagent
+POIROT_MULTIAGENT_PI_PROVIDER=deepseek
+POIROT_MULTIAGENT_PI_API_KEY=sk-xxx
+
+# 代码执行 sandbox
+POIROT_SANDBOX_USE=poirot.backend.agents.sandbox.docker.docker_sandbox_provider:DockerSandboxProvider
+
+# 编码 skill
+POIROT_SKILL_ENABLED=true
+POIROT_SKILL_MAX_INJECT=15
+```
+
+---
+
+## 使用技巧
+
+### 记忆系统
+
+**观察记忆运行：**
+- `.poirot/memory/traces.md` — 所有记忆 trace（truth source，人类可读 Markdown）
+- Journal 事件在 `.poirot/logs/threads/<thread_id>/runs/<run_id>/events.jsonl` — `memory.encode`、`memory.consolidate`
+- Worker actor 在 operation_log 中：`worker:{thread_id}:{turn_count}`
+
+**调整沉淀频率：**
+```env
+# 更频繁（每 5 轮 — 记忆建立更快，LLM 开销更大）
+POIROT_MEMORY_PHASE2_TURNS=5
+
+# 更省（每 20 轮 — 更慢，更便宜）
+POIROT_MEMORY_PHASE2_TURNS=20
+```
+
+**记忆没生效？**
+1. 检查 `.env` 有 `POIROT_MEMORY_USE=default`
+2. 检查 `.poirot/memory/traces.md` 是否存在（首次 encode 时自动创建）
+3. 前 N 轮无沉淀（worker 在第 N 轮才触发）
+4. 召回需要已有 trace — 空库 = 无召回
+
+### 多 Agent
+
+**Pi specialist 没出现？**
+1. `pi` CLI 已安装：`pi --version`（或 `npm install -g @earendil-works/pi-coding-agent`）
+2. API key 可用：`.env` 里有 `DEEPSEEK_API_KEY`（自动检测）
+3. 查看启动日志中 `[PiSpecialist]` 消息
+
+**触发 specialist 委派：**
+- Agent 自动调 `delegate_to_specialist(goal=..., success_criteria=...)` 处理子任务
+- `POIROT_MULTIAGENT_AUTO_APPROVE=true` — 无需人工确认
+- 或手动：输入"用 pi 写一个 Python 脚本..."
+
+**Subagent vs Specialist：**
+- **Subagent** = Poirot 自身副本（同 LLM，隔离 context，共享 sandbox）— 适合 Poirot 能力范围内的子任务
+- **Specialist** = 外部 CLI agent（pi/codex/claude，各自 LLM，共享 sandbox）— 适合需要专业工具的编码任务
+
+### Skill 系统
+
+**只加载了 core skill？**
+- 设计如此：启动时只加载 `builtin_skills/core/`（12 个）
+- 其他类别通过 `/skill search <关键词>` 或 `skill_search` 工具搜索
+- 安装外部 skill：`/skill install github:owner/repo`
+
+**skill_search 返回空？**
+- Skill name/description 是英文 — 用英文关键词搜索
+- `skill_search("frontend")` → 找到 `frontend-design` ✅
+- `skill_search("前端")` → 无匹配 ❌（子串匹配，无跨语言）
+
+### Sandbox
+
+**Windows + WSL2 Docker：**
+```env
+POIROT_SANDBOX_EXECUTOR=wsl
+POIROT_SANDBOX_WSL_DISTRO=Ubuntu
+```
+
+**Sandbox 目录是空的？**
+- Agent 必须写到 `/mnt/poirot/user-data/`（挂载区）— DockerPathGuard 强制
+- 挂载区外的文件（如 `/tmp`）在容器销毁时丢失（`--rm`）
+- 查看 Windows host 上 `.poirot/sandbox/aio_docker/<sandbox_id>/` 的持久化文件
+- 查看 `.poirot/outputs/` 的提取产物（通过 `present_files` 工具）
 
 ---
 
