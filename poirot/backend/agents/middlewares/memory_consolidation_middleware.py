@@ -59,7 +59,14 @@ class MemoryConsolidationMiddleware(AgentMiddleware):
 
         # 取最近 N*2 条（N 轮 ≈ 2N messages，避免 token 爆炸）
         recent = messages[-(self._n * 2):]
-        thread_id = state.get("thread_id", "unknown")
+        # thread_id 优先从 runtime config 取(fallback state → "unknown")
+        thread_id = "unknown"
+        try:
+            config = getattr(runtime, "config", None) or {}
+            configurable = config.get("configurable", {}) if isinstance(config, dict) else {}
+            thread_id = configurable.get("thread_id") or state.get("thread_id") or "unknown"
+        except Exception:
+            thread_id = state.get("thread_id", "unknown")
         task = MemoryTask(
             thread_id=thread_id, messages=recent, turn_count=turn_count,
         )

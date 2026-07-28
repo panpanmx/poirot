@@ -149,20 +149,30 @@ class MemoryWorker:
         return ids
 
     def _maybe_consolidate(self, task: MemoryTask, candidate_ids: list[str]) -> None:
-        """检查 consolidate 条件 + LLM 生成 merged + manager.consolidate。"""
+        """检查 consolidate 条件 + LLM 生成 merged + manager.consolidate。
+
+        查 store 中非 forgotten episodic trace 总量(不是单轮候选数),
+        总量 ≥ threshold 时取最旧 max=10 条做 consolidate。
+        """
         config = get_memory_config()
         threshold = int(config.phase2.get("trigger_every_n_turns", 10))
-        if len(candidate_ids) < threshold:
+
+        # 查 store 中所有非 forgotten episodic trace(不是单轮候选数)
+        all_episodic = [
+            t for t in self._manager._store.list_by_type(MemoryType.EPISODIC)
+            if not t.metadata.get("forgotten")
+        ]
+        if len(all_episodic) < threshold:
             return
 
-        to_consolidate = candidate_ids[:_MAX_CONSOLIDATE]
-        traces = [self._manager._store.get(tid) for tid in to_consolidate]
-        traces = [t for t in traces if t is not None]
-        if len(traces) < 2:
+        # 取最旧的 max=10 条(按 created_at 升序,旧记忆优先合并)
+        all_episodic.sort(key=lambda t: t.created_at)
+        to_consolidate = all_episodic[:_MAX_CONSOLIDATE]
+        if len(to_consolidate) < 2:
             return
 
-        memories_text = "\n".join(f"- {t.content}" for t in traces)
-        prompt = _CONSOLIDATE_PROMPT.format(n=len(traces), memories=memories_text)
+        memories_text = "\n".join(f"- {t.content}" for t in to_consolidate)
+        prompt = _CONSOLIDATE_PROMPT.format(n=len(to_consolidate), memories=memories_text)
         try:
             response = self._llm.invoke(prompt)
             merged = response.content if hasattr(response, "content") else str(response)
@@ -171,7 +181,11 @@ class MemoryWorker:
             return
 
         try:
-            self._manager.consolidate([t.id for t in traces], merged)
+            self._manager.consolidate([t.id for t in to_consolidate], merged)
+            logger.info(
+                f"worker: consolidated {len(to_consolidate)} episodic traces "
+                f"into 1 semantic (thread={task.thread_id} turn={task.turn_count})"
+            )
         except Exception as exc:
             logger.warning(f"worker: consolidate failed: {exc}")
 

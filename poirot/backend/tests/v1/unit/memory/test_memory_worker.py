@@ -53,6 +53,12 @@ def _make_manager(encoded_traces: list[MemoryTrace] | None = None) -> MagicMock:
         manager._store.get.side_effect = lambda tid: next(
             (t for t in encoded_traces if t.id == tid), None
         )
+        # list_by_type 返回非 forgotten 的 episodic traces
+        manager._store.list_by_type.return_value = [
+            t for t in encoded_traces if t.type == MemoryType.EPISODIC
+        ]
+    else:
+        manager._store.list_by_type.return_value = []
     manager.encode.return_value = encoded_traces[0] if encoded_traces else _make_trace("default")
     return manager
 
@@ -180,35 +186,39 @@ class TestExtractAndEncode:
 
 class TestMaybeConsolidate:
     def test_below_threshold_no_consolidate(self) -> None:
+        """store 中 episodic trace 数 < threshold → 不 consolidate。"""
         set_memory_config(MemoryConfig(use="default", phase2={"trigger_every_n_turns": 10}))
-        manager = _make_manager()
+        traces = [_make_trace(f"id{i}", f"content{i}") for i in range(3)]
+        manager = _make_manager(traces)
         llm = _make_llm("merged")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), ["id1", "id2"])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
 
         manager.consolidate.assert_not_called()
-        llm.invoke.assert_not_called()  # below threshold, no LLM call
+        llm.invoke.assert_not_called()
 
     def test_above_threshold_consolidates(self) -> None:
+        """store 中 episodic trace 数 >= threshold → consolidate。"""
         set_memory_config(MemoryConfig(use="default", phase2={"trigger_every_n_turns": 3}))
         traces = [_make_trace(f"id{i}", f"content{i}") for i in range(5)]
         manager = _make_manager(traces)
         llm = _make_llm("merged content")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [t.id for t in traces])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
 
         manager.consolidate.assert_called_once()
 
     def test_consolidate_max_10(self) -> None:
+        """store 中 episodic trace 数 > 10 → 取最旧 10 条 consolidate。"""
         set_memory_config(MemoryConfig(use="default", phase2={"trigger_every_n_turns": 3}))
         traces = [_make_trace(f"id{i}", f"content{i}") for i in range(15)]
         manager = _make_manager(traces)
         llm = _make_llm("merged")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [t.id for t in traces])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
 
         args = manager.consolidate.call_args[0]
         assert len(args[0]) == 10  # E1 max
@@ -221,7 +231,7 @@ class TestMaybeConsolidate:
         llm.invoke.side_effect = RuntimeError("LLM down")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [t.id for t in traces])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
 
         manager.consolidate.assert_not_called()
 
@@ -233,4 +243,4 @@ class TestMaybeConsolidate:
         llm = _make_llm("merged")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [t.id for t in traces])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
