@@ -29,6 +29,7 @@ class SandboxMiddleware(AgentMiddleware):
 
     INVARIANT:
     - lazy_init 硬编码 True：无 before_agent，sandbox 工具被调用时 acquire
+    - abefore_model：从 state["sandbox"] 恢复 ContextVar（subagent 共享父 sandbox_id，块 D1）
     - awrap_tool_call：sandbox 工具首次调用时 acquire + set_sandbox_id + Command 持久化
     - present_files 调用后：把 virtual path 写入 state.artifacts + 向 ArtifactServer 注册
     - aafter_agent release：release 不销毁（LocalSandboxProvider no-op）
@@ -45,6 +46,22 @@ class SandboxMiddleware(AgentMiddleware):
         self._provider = provider
         self._artifact_server = artifact_server
         self._sandbox_root = sandbox_root
+
+    async def abefore_model(
+        self, state: dict[str, Any], runtime: Runtime
+    ) -> dict[str, Any] | None:
+        """恢复 ContextVar from state["sandbox"]（subagent 共享父 sandbox_id）。
+
+        lead 首次调用时 state["sandbox"] 为 None，不恢复，走 awrap_tool_call acquire 流程。
+        subagent 继承父 sandbox_id（state["sandbox"] 已设），此处恢复 ContextVar，
+        awrap_tool_call 看到 ContextVar 已设 → 跳过 acquire → 复用父 Sandbox。
+        """
+        if get_sandbox_id() is not None:
+            return None  # ContextVar 已设（lead 同进程多轮），不覆盖
+        sandbox_state = state.get("sandbox")
+        if isinstance(sandbox_state, dict) and sandbox_state.get("sandbox_id"):
+            set_sandbox_id(sandbox_state["sandbox_id"])
+        return None
 
     @staticmethod
     def _emit_sandbox_acquired(sandbox_id: str) -> None:

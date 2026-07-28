@@ -170,3 +170,90 @@ class TestAafterAgent:
         await middleware.aafter_agent(state, MagicMock())
 
         provider.release.assert_not_called()
+
+
+class TestBeforeModelSandboxRestore:
+    """abefore_model 从 state["sandbox"] 恢复 ContextVar（块 D1 subagent 共享）。"""
+
+    @pytest.mark.anyio
+    async def test_restore_from_state_when_contextvar_none(self) -> None:
+        from poirot.backend.agents.sandbox.integration.context import get_sandbox_id
+
+        provider = _make_provider()
+        middleware = SandboxMiddleware(provider)
+        state = {"sandbox": {"sandbox_id": "parent123"}}
+
+        await middleware.abefore_model(state, MagicMock())
+
+        assert get_sandbox_id() == "parent123"
+
+    @pytest.mark.anyio
+    async def test_no_restore_when_state_sandbox_none(self) -> None:
+        from poirot.backend.agents.sandbox.integration.context import get_sandbox_id
+
+        provider = _make_provider()
+        middleware = SandboxMiddleware(provider)
+        state = {"sandbox": None}
+
+        await middleware.abefore_model(state, MagicMock())
+
+        assert get_sandbox_id() is None
+
+    @pytest.mark.anyio
+    async def test_no_restore_when_state_missing_sandbox_key(self) -> None:
+        from poirot.backend.agents.sandbox.integration.context import get_sandbox_id
+
+        provider = _make_provider()
+        middleware = SandboxMiddleware(provider)
+        state = {}
+
+        await middleware.abefore_model(state, MagicMock())
+
+        assert get_sandbox_id() is None
+
+    @pytest.mark.anyio
+    async def test_no_overwrite_when_contextvar_already_set(self) -> None:
+        from poirot.backend.agents.sandbox.integration.context import get_sandbox_id
+
+        set_sandbox_id("existing_id")
+        provider = _make_provider()
+        middleware = SandboxMiddleware(provider)
+        state = {"sandbox": {"sandbox_id": "parent123"}}
+
+        await middleware.abefore_model(state, MagicMock())
+
+        assert get_sandbox_id() == "existing_id"
+
+    @pytest.mark.anyio
+    async def test_no_restore_when_sandbox_state_not_dict(self) -> None:
+        from poirot.backend.agents.sandbox.integration.context import get_sandbox_id
+
+        provider = _make_provider()
+        middleware = SandboxMiddleware(provider)
+        state = {"sandbox": "not a dict"}
+
+        await middleware.abefore_model(state, MagicMock())
+
+        assert get_sandbox_id() is None
+
+    @pytest.mark.anyio
+    async def test_no_restore_when_sandbox_id_missing(self) -> None:
+        from poirot.backend.agents.sandbox.integration.context import get_sandbox_id
+
+        provider = _make_provider()
+        middleware = SandboxMiddleware(provider)
+        state = {"sandbox": {}}
+
+        await middleware.abefore_model(state, MagicMock())
+
+        assert get_sandbox_id() is None
+
+    @pytest.mark.anyio
+    async def test_returns_none(self) -> None:
+        provider = _make_provider()
+        middleware = SandboxMiddleware(provider)
+        state = {"sandbox": {"sandbox_id": "parent123"}}
+
+        result = await middleware.abefore_model(state, MagicMock())
+
+        assert result is None
