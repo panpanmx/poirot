@@ -2,12 +2,13 @@
 
 承接 `Hezao-MemDesign-Docs/poirot/00-long-term-memory-foundation.md` 奠基（D1-D16 ADR
 + 三层解耦架构）+ `01-poirot-integration-points.md` 介入清单 + `48-memory-l1-base-layer.md`
-Layer 1 完整设计 + `49-memory-l2-default-strategies.md` Layer 2 完整设计。
+Layer 1 完整设计 + `49-memory-l2-default-strategies.md` Layer 2 完整设计
++ `50-memory-l3-store-retriever.md` Layer 3 完整设计。
 
 三层解耦架构（north-star）：
 - Layer 1（已落地）：基础可用性层（Schema + 9 Protocol + 状态接入 + Registry slot）
-- Layer 2（本模块当前状态）：记忆管理层（默认策略实现：EbbinghausDecayPolicy / CompositeForgetPolicy / DefaultMemoryManager）
-- Layer 3：存储与检索层（MarkdownFileStore / SQLiteShadowStore / HybridRetriever）
+- Layer 2（已落地）：记忆管理层（默认策略实现：EbbinghausDecayPolicy / CompositeForgetPolicy / DefaultMemoryManager）
+- Layer 3（本模块当前状态）：存储检索层（MarkdownFileStore + HybridRetriever）
 - Layer 4：集成层（MemoryMiddleware + bootstrap + 5 处 make_lead_agent 透传）
 - Layer 5：演化层（Phase 2 LLM 决策 cron）
 - Layer 6：扩展层（adapter 具体实现 + Persona）
@@ -15,7 +16,7 @@ Layer 1 完整设计 + `49-memory-l2-default-strategies.md` Layer 2 完整设计
 依赖方向：`app → agents/memory → (agents/capabilities, agents/state, agents/config)`。
 memory 包不反向依赖 `app`；跨层用 Protocol 破循环（boundary §3.1）。
 
-INVARIANT（L1+L2 合并，分 L1/L2 段）：
+INVARIANT（L1+L2+L3 合并，分 L1/L2/L3 段）：
 
 ## L1 不变量（16 条）
 
@@ -81,6 +82,21 @@ INVARIANT（L1+L2 合并，分 L1/L2 段）：
     （journal callback 注入，Layer 4 接 RunJournal）
 20. **traceability C**（actor 预留）：OperationLog.actor + journal payload.actor 从 ContextVar
     `_turn_id_var` 取（Layer 4 MemoryMiddleware 注入 turn_id），Layer 2 测试时为 None
+
+## L3 不变量（12 条，存储检索实现层，承接 50 §9）
+
+1. **Markdown-as-Truth**：traces.md 是 truth source，内存索引是 derived（可重建）（00 §8.2）
+2. **单文件 + 分隔符**：所有 trace 在 traces.md，用 `<!-- trace: {id} -->` 分隔（方案 B）
+3. **frontmatter + content**：每条 trace = YAML frontmatter（所有字段除 content）+ content 正文
+4. **无事务**（2A）：add/update/remove 逐个操作，失败 log，接受最终一致（Phase 2 cron 修复）
+5. **文件锁**（6B）：`threading.Lock` 保护 update/remove（单进程）；跨进程锁留后续
+6. **list_by_filter 粗筛**（7A）：store 只按 max_age_hours/type/metadata 过滤，strength 精算由调用方
+7. **retrieve 强化写回**（1A）：HybridRetriever.retrieve 内部调 store.update，caller 不负责
+8. **forgotten 过滤在 Retriever**（3B）：store 不感知 forgotten，Retriever 过滤 metadata.forgotten
+9. **BM25 增量索引**（5B）：构造全量建 + on_trace_* 增量维护
+10. **无 vector/graph**：HybridRetriever 纯 BM25，不依赖 adapters（空壳保留 Layer 6）
+11. **storage_path 锚定**（01 D12）：相对路径锚定（L3 cwd fallback，Layer 4 bootstrap 传绝对路径）
+12. **解析容错**（2A）：frontmatter 损坏 log + 跳过，不崩（最终一致）
 """
 
 from __future__ import annotations
