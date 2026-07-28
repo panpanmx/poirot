@@ -13,19 +13,13 @@ from poirot.backend.agents.memory.strategies.default.strategy import build_defau
 
 
 class TestBuildDefaultProvider:
-    def test_raises_not_implemented(self) -> None:
-        with pytest.raises(NotImplementedError, match="Layer 2/3 placeholder"):
-            build_default_provider()
+    """build_default_provider 测试移到 test_strategy.py（Layer 2 实现后）。"""
 
-    def test_raises_with_args(self) -> None:
-        with pytest.raises(NotImplementedError):
-            build_default_provider("arg", kwarg="val")
-
-    def test_error_message_mentions_layer_2_3(self) -> None:
-        try:
-            build_default_provider()
-        except NotImplementedError as exc:
-            assert "Layer 2/3" in str(exc)
+    def test_moved_to_test_strategy(self) -> None:
+        """L2 实现后 build_default_provider 不再抛 NotImplementedError，测试在 test_strategy.py。"""
+        from poirot.backend.agents.memory.strategies.default.strategy import build_default_provider
+        # 验证不再抛 NotImplementedError（调用需 store+retriever 参数，这里只验证可 import）
+        assert callable(build_default_provider)
 
 
 class TestDecayParams:
