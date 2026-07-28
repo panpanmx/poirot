@@ -14,6 +14,7 @@
 
 from typing import Protocol, runtime_checkable
 
+from poirot.backend.agents.multiagent.eval.registry import SpecialistEvalRegistry
 from poirot.backend.agents.multiagent.eval.types import EvalContext
 from poirot.backend.agents.multiagent.evolution.promotion_gate import EvalResult
 
@@ -41,3 +42,52 @@ class EvalBridge(Protocol):
     def health_check(self) -> bool:
         """registry 非空时 True（至少 1 个 adapter 注册）."""
         ...
+
+
+class OrchestrationBridge:
+    """L3 multiagent 评估转接层实现，实现 EvalBridge Protocol（43 文档 §4.1）.
+
+    L2 调 L3 的唯一入口（PromotionGate.bridge 参数注入）.
+    evaluate(ctx) → _select_method(ctx) 选 adapter → adapter.evaluate(ctx).
+    fail-closed: adapter 异常返 EvalResult(success=False)，不抛异常（L3-2.4 决策 a）.
+    _select_method: eval_method_hint > expected_outcome(longitudinal_pairs) > open_ended(llm_judge) > programmatic.
+    """
+
+    def __init__(self, adapter_registry: SpecialistEvalRegistry) -> None:
+        self._adapters = adapter_registry
+
+    def evaluate(self, ctx: EvalContext) -> EvalResult:
+        method = self._select_method(ctx)
+        adapter = self._adapters.get(method)
+        if adapter is None:
+            return EvalResult(
+                candidate_score=0.0, baseline_score=0.0,
+                ci_low=0.0, ci_high=0.0, sample_size=0,
+                method_used=method, raw_data_ref=None,
+                success=False, failure_reason=f"adapter '{method}' not registered",
+            )
+        try:
+            return adapter.evaluate(ctx)
+        except Exception as exc:
+            return EvalResult(
+                candidate_score=0.0, baseline_score=0.0,
+                ci_low=0.0, ci_high=0.0, sample_size=0,
+                method_used=method, raw_data_ref=None,
+                success=False, failure_reason=str(exc),
+            )
+
+    def _select_method(self, ctx: EvalContext) -> str:
+        """根据 ctx 特征自动选 adapter（L3-3.3 决策 c：配置默认 + Bridge 自动覆盖）."""
+        if ctx.eval_method_hint:
+            return ctx.eval_method_hint
+        if ctx.task_sample and all(t.expected_outcome for t in ctx.task_sample):
+            return "longitudinal_pairs"
+        if ctx.metadata.get("task_type") == "open_ended":
+            return "llm_judge"
+        return "programmatic"
+
+    def list_available_methods(self) -> tuple[str, ...]:
+        return self._adapters.list_methods()
+
+    def health_check(self) -> bool:
+        return len(self._adapters.list_methods()) > 0
