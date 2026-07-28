@@ -175,6 +175,18 @@ POIROT_MCP_ENABLED=true
 
 ---
 
+## Screenshots
+
+<div align="center">
+
+<img src="resource/assets/screenshot-tui-conversation.png" alt="Poirot TUI Conversation" width="880">
+
+<sub>TUI Conversation View — dual-panel layout with live context governance, sandbox status, and memory recall</sub>
+
+</div>
+
+---
+
 ## Tech Stack
 
 <div align="center">
