@@ -37,6 +37,14 @@ class MemoryStore(Protocol):
         """更新记忆（frozen 语义：替换）。trace.id 不存在抛 MemoryNotFoundError。"""
         ...
 
+    def batch_update(self, traces: list[MemoryTrace]) -> None:
+        """批量更新（frozen 语义：替换）。traces 中任一 id 不存在抛 MemoryNotFoundError。
+
+        用于 consolidate 标记旧 trace forgotten 批量提交（F2 决策：避免 N 次 update 的
+        O(N²)，MarkdownFileStore 一次全量重写）。
+        """
+        ...
+
     def remove(self, trace_id: str) -> None:
         """删除记忆。不存在静默（幂等）。"""
         ...

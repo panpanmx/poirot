@@ -22,9 +22,6 @@ class _MockForget:
     def should_forget(self, trace: MemoryTrace, now: float) -> bool:
         return False
 
-    def resolve_conflict(self, old: MemoryTrace, new: MemoryTrace) -> MemoryTrace:
-        return new
-
 
 class _MockPersona:
     def get_static_profile(self, user_id: str) -> dict: return {}
@@ -71,19 +68,16 @@ class TestForgetPolicy:
     def test_mock_isinstance(self) -> None:
         assert isinstance(_MockForget(), ForgetPolicy)
 
-    def test_two_methods(self) -> None:
+    def test_should_forget_method(self) -> None:
         assert hasattr(ForgetPolicy, "should_forget")
-        assert hasattr(ForgetPolicy, "resolve_conflict")
+
+    def test_no_resolve_conflict(self) -> None:
+        """B3：ForgetPolicy 删 resolve_conflict（矛盾走 reconsolidate/consolidate）。"""
+        assert not hasattr(ForgetPolicy, "resolve_conflict")
 
     def test_should_forget_returns_bool(self) -> None:
         trace = MemoryTrace(id="t", content="c", type=MemoryType.EPISODIC)
         assert isinstance(_MockForget().should_forget(trace, 1000.0), bool)
-
-    def test_resolve_conflict_returns_new(self) -> None:
-        old = MemoryTrace(id="old", content="o", type=MemoryType.SEMANTIC)
-        new = MemoryTrace(id="new", content="n", type=MemoryType.SEMANTIC)
-        result = _MockForget().resolve_conflict(old, new)
-        assert result is new
 
 
 class TestPersonaPolicy:

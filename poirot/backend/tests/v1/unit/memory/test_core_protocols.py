@@ -17,6 +17,7 @@ class _MockStore:
     def add(self, trace: MemoryTrace) -> None: ...
     def get(self, trace_id: str) -> MemoryTrace | None: return None
     def update(self, trace: MemoryTrace) -> None: ...
+    def batch_update(self, traces: list[MemoryTrace]) -> None: ...
     def remove(self, trace_id: str) -> None: ...
     def list_by_type(self, type: MemoryType) -> list[MemoryTrace]: return []
     def list_by_filter(self, filter: MemoryFilter) -> list[MemoryTrace]: return []
@@ -53,11 +54,12 @@ class TestMemoryStoreProtocol:
         assert isinstance(_MockStore(), MemoryStore)
 
     def test_method_count(self) -> None:
-        """7 方法签名完整：add/get/update/remove/list_by_type/list_by_filter/list_all。"""
+        """8 方法签名完整：add/get/update/batch_update/remove/list_by_type/list_by_filter/list_all。"""
         methods = [m for m in dir(MemoryStore) if not m.startswith("_")]
         assert "add" in methods
         assert "get" in methods
         assert "update" in methods
+        assert "batch_update" in methods
         assert "remove" in methods
         assert "list_by_type" in methods
         assert "list_by_filter" in methods
