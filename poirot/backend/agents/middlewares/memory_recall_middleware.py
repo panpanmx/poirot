@@ -7,6 +7,9 @@ user message 不进 tool pairing）。
 注入方式：per-call HumanMessage（保护 prompt caching，不进 system_prompt cache prefix）。
 set_turn_id：before_model 注入，after_model 清除（traceability C）。
 
+块 B 迁移：从 agents/memory/middleware.py 迁到 agents/middlewares/memory_recall_middleware.py，
+与既有 18 个 middleware 同层治理。内容 1:1 搬迁，类名 MemoryMiddleware 保留。
+
 INVARIANT：
 - 记忆是 middleware，不进 leader agent 主体（00 D9）
 - 不进 system prompt cache：per-call HumanMessage(hide_from_ui=True)（00 D10）
@@ -100,7 +103,7 @@ class MemoryMiddleware(AgentMiddleware):
                     additional_kwargs={"hide_from_ui": True},
                 )
             ],
-            # recalled_memories 只存索引（id + score + strength），不存全量内容
+            # recalled_memories 只 + score + strength），不存全量内容
             "recalled_memories": [
                 {"id": r.trace.id, "score": r.score, "strength": r.strength}
                 for r in results
@@ -141,7 +144,7 @@ class MemoryMiddleware(AgentMiddleware):
     def _format_recall(self, results: list[RetrievalResult], token_budget: int) -> str:
         """格式化召回结果 + token budget 裁剪。
 
-        格 strength] content"，超 token_budget×4 字符截断。
+       strength] content"，超 token_budget×4 字符截断。
         """
         max_chars = token_budget * _CHARS_PER_TOKEN
         lines: list[str] = ["[Recalled Memories]"]

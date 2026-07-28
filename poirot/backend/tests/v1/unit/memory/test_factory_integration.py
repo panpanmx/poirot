@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from poirot.backend.agents.leader.factory import _build_middlewares
-from poirot.backend.agents.memory.middleware import MemoryMiddleware
+from poirot.backend.agents.middlewares.memory_recall_middleware import MemoryMiddleware
 from poirot.backend.agents.middlewares.sandbox_middleware import SandboxMiddleware
 from poirot.backend.agents.middlewares.tool_call_middleware import ToolCallMiddleware
 

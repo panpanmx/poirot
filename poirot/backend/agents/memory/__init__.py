@@ -111,7 +111,7 @@ INVARIANT（L1+L2+L3+L4 合并，分 L1/L2/L3/L4 段）：
 7. **store 包装 5B**：add/update/remove 后调 retriever.on_trace_*（装饰器，不改 store 类）
 8. **5 处透传**：make_lead_agent 5 调用点都透传 memory_provider（漏传该路径记忆丢失）
 9. **storage_path 锚定**：_resolve_relative_paths 锚定 _PROJECT_ROOT（01 D12）
-10. **import 防火墙**：memory/middleware.py + bootstrap.py 不 import app（00 D12）
+10. **import 防火墙**：bootstrap.py 不 import app（00 D12）；MemoryMiddleware 迁到 agents/middlewares/memory_recall_middleware.py（块 B）
 11. **向后兼容**：use="" 默认禁用，行为不变；memory_provider=None 不挂载
 """
 

@@ -117,7 +117,7 @@ def _build_middlewares(
         ))
     # L4 Memory: Sandbox 后,HelpRequest/ToolCall 前(记忆引用 sandbox 结果,不进 tool pairing)
     if memory_provider is not None:
-        from poirot.backend.agents.memory.middleware import MemoryMiddleware
+        from poirot.backend.agents.middlewares.memory_recall_middleware import MemoryMiddleware
 
         middlewares.append(MemoryMiddleware(
             memory_provider=memory_provider,

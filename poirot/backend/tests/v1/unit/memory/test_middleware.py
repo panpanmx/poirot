@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from langchain_core.messages import HumanMessage
 
-from poirot.backend.agents.memory.middleware import MemoryMiddleware
+from poirot.backend.agents.middlewares.memory_recall_middleware import MemoryMiddleware
 from poirot.backend.agents.memory.schema import MemoryTrace, MemoryType
 from poirot.backend.agents.memory.types import RetrievalResult
 
@@ -48,7 +48,7 @@ def _patch_set_turn_id(monkeypatch):
     """patch set_turn_id 记录调用（避免 ContextVar + asyncio.run 隔离问题）。"""
     calls: list = []
     monkeypatch.setattr(
-        "poirot.backend.agents.memory.middleware.set_turn_id",
+        "poirot.backend.agents.middlewares.memory_recall_middleware.set_turn_id",
         lambda tid: calls.append(tid),
     )
     return calls

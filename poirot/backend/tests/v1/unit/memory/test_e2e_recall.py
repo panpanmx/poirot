@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage
 from poirot.backend.agents.leader.factory import _build_middlewares
 from poirot.backend.agents.memory.bootstrap import _wrap_store, reset_memory_provider
 from poirot.backend.agents.memory.config import get_memory_config, set_memory_config
-from poirot.backend.agents.memory.middleware import MemoryMiddleware
+from poirot.backend.agents.middlewares.memory_recall_middleware import MemoryMiddleware
 from poirot.backend.agents.memory.schema import MemoryType
 from poirot.backend.agents.memory.strategies.default.strategy import build_default_provider
 
