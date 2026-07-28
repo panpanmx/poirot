@@ -1,10 +1,11 @@
-"""默认策略常量（衰减参数 / 阈值 / BM25 权重）。
+"""默认策略常量（衰减参数 / 遗忘阈值 / 检索权重 / 巩固参数 / 关联默认）。
 
-Layer 1：仅衰减参数 + 检索权重（供 schema 默认值参考 + Layer 2/3 使用）。
-Layer 2：遗忘阈值 / 检索权重细化。
+Layer 1：仅衰减参数 + 检索权重（供 schema 默认值参考）。
+Layer 2：补全遗忘阈值 / 巩固参数 / 关联默认。
 Layer 3：BM25 参数。
 
-承接 `Hezao-MemDesign-Docs/poirot/00-long-term-memory-foundation.md` §5.2 + §5.5。
+承接 `Hezao-MemDesign-Docs/poirot/00-long-term-memory-foundation.md` §5.2 + §5.5
++ `49-memory-l2-default-strategies.md` §4 Step 1。
 """
 
 from __future__ import annotations
@@ -26,4 +27,26 @@ RETRIEVAL_WEIGHTS = {
 DECAY_COEFFICIENTS = {
     "access_boost": 0.1,        # log(1 + access_count) × 0.1
     "importance_boost": 0.05,   # importance × 0.05
+}
+
+# 遗忘阈值（00 §7.4 CompositeForgetPolicy）
+FORGET_THRESHOLDS = {
+    "strength_threshold": 0.1,   # strength 低于此值 → 遗忘
+    "ttl_hours": 720,            # 30 天未访问 → 遗忘（TTL）
+    "conflict_window_hours": 24, # 矛盾检测窗口（新记忆 24h 内覆盖旧记忆，预留 Layer 5）
+}
+
+# 巩固参数（00 §5.3 Consolidate）
+CONSOLIDATE_PARAMS = {
+    "min_traces_to_consolidate": 2,  # 最少 2 条才能合并
+    "max_traces_to_consolidate": 10, # 最多 10 条一次合并（避免 LLM 上下文爆炸，E1）
+    "default_consolidated_type": "semantic",  # 合并后默认转 semantic
+    "default_importance_boost": 0.1, # 合并后 importance 提升（稳定知识更重要）
+}
+
+# associate 默认参数（00 §5.3 Associate）
+ASSOCIATE_DEFAULTS = {
+    "default_strength": 0.5,     # 默认关联强度
+    "default_type": "related",   # related / causal / temporal / contrast
+    "max_associations_per_trace": 20,  # 单 trace 最大关联数（防膨胀，D3 LRU 淘汰）
 }
