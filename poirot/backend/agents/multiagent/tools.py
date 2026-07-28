@@ -54,6 +54,40 @@ def _extract_sandbox_id(state: dict, sandbox_id: str | None) -> str | None:
     return None
 
 
+def _write_decision_log_async(
+    writer: Any, specialist_name: str, goal: str, success_criteria: str, result: Any,
+) -> None:
+    """异步写 DecisionLogRecord（L3 扩展，fire-and-forget）.
+
+    lazy import L3 类型避免循环依赖（同 L1 metrics.py pattern）.
+    failure_category 从 result 获取（L2 ResultSummarizer 输出，可能为 None）.
+    """
+    import uuid
+    from poirot.backend.agents.journal.events import utc_now_iso
+    from poirot.backend.agents.multiagent.eval.types import DecisionLogRecord
+    from poirot.backend.agents.multiagent.evolution.types import FailureCategory
+
+    failure_category = getattr(result, "failure_category", None)
+    if isinstance(failure_category, str):
+        try:
+            failure_category = FailureCategory(failure_category)
+        except ValueError:
+            failure_category = None
+
+    record = DecisionLogRecord(
+        log_id=str(uuid.uuid4()),
+        specialist_name=specialist_name,
+        task_id=str(uuid.uuid4()),
+        goal=goal,
+        success_criteria=success_criteria,
+        failure_category=failure_category,
+        success_criteria_met=1 if getattr(result, "success", False) else 0,
+        lesson_text=None,  # MVP 不生成 lesson，L3 后置分析留 follow-up
+        timestamp=utc_now_iso(),
+    )
+    writer.write_async(record)
+
+
 def make_specialist_tool(
     name: str,
     specialist: SpecialistAgent,
@@ -64,6 +98,7 @@ def make_specialist_tool(
     timeout_seconds: int = 600,
     version_dag: Any | None = None,
     budget_guard: Any | None = None,
+    decision_log_writer: Any | None = None,
 ) -> BaseTool:
     """Factory：为 specialist 动态生成 delegate_to_<name> tool。
 
@@ -71,6 +106,7 @@ def make_specialist_tool(
     LLM 只填 3 参数（goal + success_criteria + sandbox_id 可选），其余内部处理。
     L2 扩展：version_dag 非 None 时读 is_active SkillInjectionTemplate；
     budget_guard 非 None 时 check_and_record，超限返 BudgetExceeded JSON。
+    L3 扩展：decision_log_writer 非 None 时异步写 DecisionLogRecord（fire-and-forget）。
     """
 
     @tool(f"delegate_to_{name}")
@@ -134,6 +170,10 @@ def make_specialist_tool(
             goal,
             success_criteria,
         )
+
+        # L3 扩展：异步写 DecisionLogRecord（fire-and-forget，不阻塞 L1 turn）
+        if decision_log_writer is not None:
+            _write_decision_log_async(decision_log_writer, name, goal, success_criteria, result)
 
         return json.dumps({
             "success": result.success,

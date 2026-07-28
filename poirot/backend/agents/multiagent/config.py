@@ -45,6 +45,32 @@ class L2Config:
 
 
 @dataclass(frozen=True)
+class L3Config:
+    """L3 eval layer config (43 doc §8).
+
+    enabled=false default (data-driven trigger).
+    llm_judge_weights 复用 skill TaskQualityJudge 权重值（D-L3-13）.
+    """
+
+    enabled: bool = False
+    default_eval_method: str = "programmatic"
+    llm_judge_model: str | None = None
+    llm_judge_weights: dict = field(
+        default_factory=lambda: {
+            "task_completion": 0.50,
+            "response_quality": 0.35,
+            "efficiency": 0.05,
+            "tool_usage": 0.10,
+        }
+    )
+    health_check_window: int = 20
+    degradation_threshold: float = 0.4
+    degradation_delta: float = 0.15
+    decision_log_retention_days: int = 90
+    decision_log_archive_enabled: bool = True
+
+
+@dataclass(frozen=True)
 class SpecialistBudgetLimit:
     """Per-specialist daily budget limit (R5.1)."""
 
@@ -93,6 +119,8 @@ class MultiAgentConfig:
     # L2 evolution layer config (default enabled=false, data-driven trigger)
     l2: L2Config = field(default_factory=L2Config)
     budget: BudgetConfig = field(default_factory=BudgetConfig)
+    # L3 eval layer config (default enabled=false, data-driven trigger)
+    l3: L3Config = field(default_factory=L3Config)
 
 
 STARTUP_ONLY_FIELDS = frozenset({
@@ -100,6 +128,7 @@ STARTUP_ONLY_FIELDS = frozenset({
     "specialists_use",
     "metrics_db_path",
     "l2.enabled",
+    "l3.enabled",
 })
 
 
