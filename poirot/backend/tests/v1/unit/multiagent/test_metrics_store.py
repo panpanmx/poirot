@@ -216,7 +216,7 @@ def test_schema_migration_sets_user_version(tmp_path):
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     conn.close()
 
-    assert version == 2  # L2 schema upgrade (v1 -> v2)
+    assert version == 3  # L3 schema upgrade (v2 -> v3)
 
 
 def test_idempotent_init(tmp_path):

@@ -13,10 +13,11 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from poirot.backend.agents.journal.events import utc_now_iso
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS specialist_records (
@@ -109,6 +110,33 @@ CREATE TABLE IF NOT EXISTS l2_blocked_patterns (
     blocked_at       TEXT NOT NULL,
     auto_release_at  TEXT NOT NULL,
     released         INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS specialist_decision_log (
+    log_id                  TEXT PRIMARY KEY,
+    specialist_name         TEXT NOT NULL,
+    task_id                 TEXT NOT NULL,
+    goal                    TEXT NOT NULL,
+    success_criteria        TEXT NOT NULL,
+    failure_category        TEXT,
+    success_criteria_met    INTEGER,
+    lesson_text             TEXT,
+    timestamp               TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_decision_log_specialist ON specialist_decision_log(specialist_name, timestamp);
+CREATE INDEX IF NOT EXISTS idx_decision_log_category ON specialist_decision_log(failure_category, timestamp);
+
+CREATE TABLE IF NOT EXISTS specialist_decision_log_archive (
+    log_id                  TEXT PRIMARY KEY,
+    specialist_name         TEXT NOT NULL,
+    task_id                 TEXT NOT NULL,
+    goal                    TEXT NOT NULL,
+    success_criteria        TEXT NOT NULL,
+    failure_category        TEXT,
+    success_criteria_met    INTEGER,
+    lesson_text             TEXT,
+    timestamp               TEXT NOT NULL,
+    archived_at             TEXT NOT NULL
 );
 """
 
@@ -444,3 +472,107 @@ class MultiAgentMetricsStore:
         """All specialist names with records."""
         all_metrics = self.get_top_specialists(limit=100)
         return [m.specialist_name for m in all_metrics]
+
+    def save_decision_log(self, record: Any) -> None:
+        """Save decision log record (L3 DecisionLogRecord, duck typing).
+
+        L3-7.1: 跨 run specialist 协作 lessons 累积.
+        failure_category 存 enum .value（字符串，避免 import L3 类型）.
+        """
+        now = utc_now_iso()
+        fc_value = record.failure_category.value if record.failure_category else None
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    """INSERT OR REPLACE INTO specialist_decision_log
+                       (log_id, specialist_name, task_id, goal, success_criteria,
+                        failure_category, success_criteria_met, lesson_text, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (record.log_id, record.specialist_name, record.task_id,
+                     record.goal, record.success_criteria, fc_value,
+                     record.success_criteria_met, record.lesson_text,
+                     record.timestamp or now),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def get_decision_logs(
+        self, specialist_name: str, failure_category: Any | None, limit: int,
+    ) -> list[Any]:
+        """Query decision logs (lazy import L3 types to avoid circular dependency).
+
+        Returns list[DecisionLogRecord]. failure_category None = no filter.
+        """
+        from poirot.backend.agents.multiagent.evolution.types import FailureCategory
+        from poirot.backend.agents.multiagent.eval.types import DecisionLogRecord
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                if failure_category is not None:
+                    cursor = conn.execute(
+                        """SELECT log_id, specialist_name, task_id, goal, success_criteria,
+                                  failure_category, success_criteria_met, lesson_text, timestamp
+                           FROM specialist_decision_log
+                           WHERE specialist_name=? AND failure_category=?
+                           ORDER BY timestamp DESC LIMIT ?""",
+                        (specialist_name, failure_category.value, limit),
+                    )
+                else:
+                    cursor = conn.execute(
+                        """SELECT log_id, specialist_name, task_id, goal, success_criteria,
+                                  failure_category, success_criteria_met, lesson_text, timestamp
+                           FROM specialist_decision_log
+                           WHERE specialist_name=?
+                           ORDER BY timestamp DESC LIMIT ?""",
+                        (specialist_name, limit),
+                    )
+                rows = cursor.fetchall()
+            finally:
+                conn.close()
+
+        records: list[DecisionLogRecord] = []
+        for row in rows:
+            fc = FailureCategory(row[5]) if row[5] else None
+            records.append(DecisionLogRecord(
+                log_id=row[0], specialist_name=row[1], task_id=row[2],
+                goal=row[3], success_criteria=row[4], failure_category=fc,
+                success_criteria_met=row[6], lesson_text=row[7], timestamp=row[8],
+            ))
+        return records
+
+    def archive_decision_logs(self, retention_days: int) -> int:
+        """Archive expired decision logs (move to archive table + delete main, L3-7.5)."""
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        now = utc_now_iso()
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    "SELECT log_id FROM specialist_decision_log WHERE timestamp < ?",
+                    (cutoff,),
+                )
+                expired_ids = [row[0] for row in cursor.fetchall()]
+                if not expired_ids:
+                    return 0
+                placeholders = ",".join("?" * len(expired_ids))
+                conn.execute(
+                    f"""INSERT INTO specialist_decision_log_archive
+                        (log_id, specialist_name, task_id, goal, success_criteria,
+                         failure_category, success_criteria_met, lesson_text, timestamp, archived_at)
+                        SELECT log_id, specialist_name, task_id, goal, success_criteria,
+                               failure_category, success_criteria_met, lesson_text, timestamp, ?
+                        FROM specialist_decision_log WHERE log_id IN ({placeholders})""",
+                    [now] + expired_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM specialist_decision_log WHERE log_id IN ({placeholders})",
+                    expired_ids,
+                )
+                conn.commit()
+                return len(expired_ids)
+            finally:
+                conn.close()
