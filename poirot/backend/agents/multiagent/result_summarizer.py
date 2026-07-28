@@ -6,6 +6,7 @@
 - 生成 gap_analysis（success=False 时从 error + raw_output 提取失败原因）
 - 不传回 raw output 全量（控制 lead agent context 膨胀）
 - 输出端转换器：与 ContextSummarizer（输入端）配对
+- L2 扩展：输出 failure_category（L2 FailureFocuser 读取，D-7=c）
 """
 from __future__ import annotations
 
@@ -36,5 +37,6 @@ class ResultSummarizer(Protocol):
         programmatic eval floor（INV#10）：
         - 校验产物存在性 + success_criteria 回应 + 无敏感改动
         - success=False 时 gap_analysis 必填
+        - L2 扩展：failure_category 字段（基于 success + raw_output 启发式分类）
         """
         ...

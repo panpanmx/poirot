@@ -45,6 +45,7 @@ class BaseResultSummarizer:
         success = self._evaluate_success(raw_output, artifacts, success_criteria)
         gap_analysis = "" if success else self._extract_gap(raw_output, success_criteria)
         summary = self._compress(raw_output)
+        failure_category = self._classify_failure(success, raw_output)
 
         return SpecialistResult(
             specialist_name=self._specialist_name,
@@ -52,7 +53,31 @@ class BaseResultSummarizer:
             artifacts=tuple(artifacts),
             success=success,
             gap_analysis=gap_analysis,
+            failure_category=failure_category,
         )
+
+    def _classify_failure(self, success: bool, raw_output: str) -> str | None:
+        """Heuristic failure category classification (D-7=c, L2 FailureFocuser reads).
+
+        success=True -> None
+        success=False + raw_output contains "context" -> context_insufficient
+        + "skill" or "ability" -> ability_insufficient
+        + "goal" or "unclear" -> goal_unclear
+        + "sandbox" or "timeout" -> sandbox_issue
+        default -> ability_insufficient
+        """
+        if success:
+            return None
+        lower = raw_output.lower()
+        if "context" in lower:
+            return "context_insufficient"
+        if "skill" in lower or "ability" in lower:
+            return "ability_insufficient"
+        if "goal" in lower or "unclear" in lower:
+            return "goal_unclear"
+        if "sandbox" in lower or "timeout" in lower:
+            return "sandbox_issue"
+        return "ability_insufficient"
 
     def _evaluate_success(
         self,

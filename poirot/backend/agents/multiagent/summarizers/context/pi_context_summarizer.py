@@ -36,6 +36,7 @@ class PiContextSummarizer:
         state: ThreadState,
         goal: str,
         success_criteria: str,
+        template: Any | None = None,
     ) -> str:
         parts: list[str] = [f"Goal: {goal}", f"Success criteria: {success_criteria}"]
 

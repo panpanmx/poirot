@@ -33,6 +33,7 @@ class SelfCopyContextSummarizer:
         state: ThreadState,
         goal: str,
         success_criteria: str,
+        template: Any | None = None,
     ) -> str:
         if self._llm is not None:
             return self._llm_summarize(state, goal, success_criteria)
@@ -43,6 +44,7 @@ class SelfCopyContextSummarizer:
         state: ThreadState,
         goal: str,
         success_criteria: str,
+        template: Any | None = None,
     ) -> str:
         parts: list[str] = [f"Goal: {goal}", f"Success criteria: {success_criteria}"]
 
@@ -67,6 +69,7 @@ class SelfCopyContextSummarizer:
         state: ThreadState,
         goal: str,
         success_criteria: str,
+        template: Any | None = None,
     ) -> str:
         """LLM 提取研究 context（精准提取，MVP 留接口）。"""
         user_input = state.get("user_input", "")

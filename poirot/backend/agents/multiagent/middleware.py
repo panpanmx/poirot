@@ -57,8 +57,12 @@ class OrchestrationMiddleware(AgentMiddleware):
     def __init__(
         self,
         metrics_store: MultiAgentMetricsStore | None = None,
+        l2_trigger_middleware: Any | None = None,
+        budget_guard: Any | None = None,
     ) -> None:
         self._metrics = metrics_store
+        self._l2_trigger_middleware = l2_trigger_middleware
+        self._budget_guard = budget_guard
 
     def _is_delegate_tool(self, tool_name: str) -> bool:
         return tool_name.startswith("delegate_to_")

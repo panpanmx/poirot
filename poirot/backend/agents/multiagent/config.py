@@ -13,6 +13,57 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
+class L2Config:
+    """L2 evolution layer config (R4 + R6 + R7).
+
+    enabled=false default (data-driven trigger).
+    """
+
+    enabled: bool = False
+    cron_interval_hours: float = 6.0
+    cooldown_seconds: float = 3600.0
+    anti_loop_window: int = 5
+    failure_window_hours: float = 24.0
+    failure_threshold: int = 5
+    degradation_min_invoked: int = 5
+    degradation_threshold: float = 0.4
+    cost_alert_usd: float = 1.0
+    latency_alert_seconds: float = 300.0
+    blocked_auto_release_hours: float = 24.0
+    evolution_model: str | None = None
+    eval_timeout_seconds: float = 1800.0
+    eval_sample_min: int = 10
+    eval_sample_max: int = 15
+    eval_task_max_reuse: int = 3
+    intent_llm_enabled: bool = False
+    intent_model: str | None = None
+    intent_confidence_threshold: float = 0.7
+    intent_delegate_rate_threshold: float = 0.2
+    intent_ability_failure_threshold: float = 0.5
+    intent_metadata_sample_size: int = 20
+
+
+@dataclass(frozen=True)
+class SpecialistBudgetLimit:
+    """Per-specialist daily budget limit (R5.1)."""
+
+    per_day_tokens: int = 200000
+    per_day_cost_usd: float = 20.0
+    per_day_calls: int = 50
+
+
+@dataclass(frozen=True)
+class BudgetConfig:
+    """Budget config (R5). warning_threshold=0.8 (80% warning)."""
+
+    codex: SpecialistBudgetLimit = field(default_factory=SpecialistBudgetLimit)
+    claude: SpecialistBudgetLimit = field(default_factory=SpecialistBudgetLimit)
+    subagent: SpecialistBudgetLimit = field(default_factory=SpecialistBudgetLimit)
+    pi: SpecialistBudgetLimit = field(default_factory=SpecialistBudgetLimit)
+    warning_threshold: float = 0.8
+
+
+@dataclass(frozen=True)
 class MultiAgentConfig:
     """Multi-agent orchestration configuration.
 
@@ -38,12 +89,16 @@ class MultiAgentConfig:
     specialists_pi_auto_install: bool = True
     specialists_pi_model: str = ""
     specialists_pi_thinking_level: str = "medium"
+    # L2 evolution layer config (default enabled=false, data-driven trigger)
+    l2: L2Config = field(default_factory=L2Config)
+    budget: BudgetConfig = field(default_factory=BudgetConfig)
 
 
 STARTUP_ONLY_FIELDS = frozenset({
     "enabled",
     "specialists_use",
     "metrics_db_path",
+    "l2.enabled",
 })
 
 

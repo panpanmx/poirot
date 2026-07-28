@@ -97,6 +97,7 @@ class SpecialistResult:
 
     success=False 时 gap_analysis 必填（programmatic eval floor，INV#10）。
     error 字段仅失败时填（错误类型 + 简述，不暴露 specialist 内部状态）。
+    L2 扩展：failure_category（L2 FailureFocuser 读取，D-7=c，default None 向后兼容）。
     """
 
     specialist_name: str
@@ -107,6 +108,7 @@ class SpecialistResult:
     usage: TokenUsage | None = None
     duration_seconds: float = 0.0
     error: str | None = None
+    failure_category: str | None = None
 
 
 @dataclass(frozen=True)

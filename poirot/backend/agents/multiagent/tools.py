@@ -62,11 +62,15 @@ def make_specialist_tool(
     *,
     max_steps: int = 50,
     timeout_seconds: int = 600,
+    version_dag: Any | None = None,
+    budget_guard: Any | None = None,
 ) -> BaseTool:
     """Factory：为 specialist 动态生成 delegate_to_<name> tool。
 
     tool handler 内部编排：ContextSummarizer → specialist.invoke → ResultSummarizer → JSON。
     LLM 只填 3 参数（goal + success_criteria + sandbox_id 可选），其余内部处理。
+    L2 扩展：version_dag 非 None 时读 is_active SkillInjectionTemplate；
+    budget_guard 非 None 时 check_and_record，超限返 BudgetExceeded JSON。
     """
 
     @tool(f"delegate_to_{name}")
@@ -78,6 +82,27 @@ def make_specialist_tool(
         """Delegate task to specialist. Provide goal and success_criteria. sandbox_id optional (uses thread sandbox if omitted)."""
         state = get_current_state()
         resolved_sandbox_id = _extract_sandbox_id(state, sandbox_id)
+
+        # L2 BudgetGuard check (budget_guard 非 None 时，超限返 BudgetExceeded JSON)
+        if budget_guard is not None:
+            from types import SimpleNamespace
+            cost = SimpleNamespace(tokens=0, cost_usd=0.0, calls=1)
+            budget_result = budget_guard.check_and_record(name, cost)
+            if not budget_result.allowed:
+                return json.dumps({
+                    "success": False,
+                    "error": {
+                        "type": "BudgetExceeded",
+                        "message": f"{name} budget exceeded: {budget_result.reason}",
+                        "remaining": {
+                            "tokens": budget_result.remaining.tokens if budget_result.remaining else 0,
+                            "cost_usd": budget_result.remaining.cost_usd if budget_result.remaining else 0.0,
+                            "calls": budget_result.remaining.calls if budget_result.remaining else 0,
+                        },
+                        "fallback_target": "lead",
+                    },
+                    "suggestion": f"{name} daily budget exceeded, lead agent should execute task directly or wait UTC 0 reset.",
+                })
 
         context_summary = context_summarizer.summarize(state, goal, success_criteria)
 
