@@ -45,6 +45,11 @@ def _resolve_relative_paths(config: AppConfig) -> AppConfig:
     if not p.is_absolute():
         p = (_PROJECT_ROOT / p).resolve()
     params["externalize_dir"] = str(p)
+    # L4 memory.storage_path 锚定 _PROJECT_ROOT（01 D12，与 externalize_dir 同款）
+    memory_path = Path(config.memory.storage_path)
+    if not memory_path.is_absolute():
+        memory_path = (_PROJECT_ROOT / memory_path).resolve()
+    config = replace(config, memory=replace(config.memory, storage_path=str(memory_path)))
     return replace(
         config,
         context_governance=replace(config.context_governance, params=params),
@@ -226,6 +231,9 @@ class AppRuntime:
             artifact_store=self.capability_registry.artifact_store,
             sandbox_provider=self.capability_registry.sandbox_provider,
             skill_store=self.capability_registry.skill_store,
+            specialist_registry=self.capability_registry.specialist_registry,
+            subagent_provider=self.capability_registry.subagent_provider,
+            memory_provider=self.capability_registry.memory_provider,
         )
         expert_mode = self.config.runtime.expert_mode
         new_leader = make_lead_agent(
@@ -273,6 +281,20 @@ def _load_sandbox_provider(config: AppConfig) -> Any:
     provider_cls = getattr(module, class_name)
     path_mappings = _build_path_mappings(sandbox_config)
     return provider_cls(path_mappings=path_mappings, sandbox_config=sandbox_config)
+
+
+def _load_memory_provider(config: AppConfig) -> Any:
+    """反射加载 memory provider。config.memory.use 为空则返 None。
+
+    照抄 _load_sandbox_provider 反射模式（01 介入点 11.1）。
+    config.memory.use="default" 时调 get_memory_provider()（内部 build_default_provider）。
+    """
+    memory_config = config.memory
+    if not memory_config.use:
+        return None
+    from poirot.backend.agents.memory.bootstrap import get_memory_provider
+
+    return get_memory_provider()
 
 
 def _build_path_mappings(sandbox_config: Any) -> list:
@@ -579,6 +601,7 @@ def bootstrap_runtime(
         agent_factory=_subagent_factory,
     )
 
+    memory_provider = _load_memory_provider(config)
     registry = CapabilityRegistry(
         models={"researcher": researcher_model, "reporter": reporter_model},
         tools=all_tools,
@@ -588,6 +611,7 @@ def bootstrap_runtime(
         skill_store=skill_manager.store if skill_manager else None,
         specialist_registry=ma_setup.specialist_registry,
         subagent_provider=ma_setup.subagent_provider,
+        memory_provider=memory_provider,
     )
     leader_agent = make_lead_agent(
         expert_mode=expert_mode,
