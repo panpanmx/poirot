@@ -13,12 +13,16 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from poirot.backend.agents.multiagent.evolution.types import (
     EvolutionArtifact,
     PromotionDecision,
 )
+
+if TYPE_CHECKING:
+    from poirot.backend.agents.multiagent.eval.bridge import EvalBridge
+    from poirot.backend.agents.multiagent.eval.types import EvalContext
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,7 @@ class PromotionGate:
         eval_sample_max: int = 15,
         eval_task_max_reuse: int = 3,
         z_score: float = 1.96,
+        bridge: "EvalBridge | None" = None,
     ) -> None:
         self._evaluator = evaluator
         self._version_dag = version_dag
@@ -89,6 +94,7 @@ class PromotionGate:
         self._sample_max = eval_sample_max
         self._task_max_reuse = eval_task_max_reuse
         self._z = z_score
+        self._bridge = bridge
         # task 累计使用次数（防过拟合，R3.4）
         self._task_use_count: dict[str, int] = {}
 
@@ -103,6 +109,16 @@ class PromotionGate:
         过滤累计超 _task_max_reuse 的 task（防过拟合）.
         超时 → 返 EvalResult(success=False, failure_reason='overall_timeout').
         """
+        # L3 bridge 分发：bridge 非 None 时调 bridge.evaluate(ctx)，否则既有 floor eval
+        if self._bridge is not None:
+            from poirot.backend.agents.multiagent.eval.types import EvalContext
+            ctx = EvalContext(
+                candidate=candidate,
+                baseline=baseline,
+                task_sample=tuple(task_sample),
+            )
+            return self._bridge.evaluate(ctx)
+
         if self._evaluator is None:
             return EvalResult(
                 candidate_score=0.0, baseline_score=0.0,

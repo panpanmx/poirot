@@ -83,22 +83,24 @@ class EvolutionMutator:
         self,
         current: ContextSummaryTemplate,
         failures: FailureStats,
+        lessons: tuple[str, ...] = (),
     ) -> EvolutionResult:
         """演化 ContextSummaryTemplate（CONTEXT_INSUFFICIENT 占主导时调）."""
         return self._evolve(
             current, failures, "context_summary",
-            _CONTEXT_SUMMARY_SCHEMA,
+            _CONTEXT_SUMMARY_SCHEMA, lessons,
         )
 
     def evolve_skill_injection(
         self,
         current: SkillInjectionTemplate,
         failures: FailureStats,
+        lessons: tuple[str, ...] = (),
     ) -> EvolutionResult:
         """演化 SkillInjectionTemplate（ABILITY_INSUFFICIENT 占主导时调）."""
         return self._evolve(
             current, failures, "skill_injection",
-            _SKILL_INJECTION_SCHEMA,
+            _SKILL_INJECTION_SCHEMA, lessons,
         )
 
     def _evolve(
@@ -107,6 +109,7 @@ class EvolutionMutator:
         failures: FailureStats,
         artifact_type: str,
         schema: dict,
+        lessons: tuple[str, ...] = (),
     ) -> EvolutionResult:
         """单次 LLM + 结构化 JSON + 重试 2（R2.1/R2.2）."""
         if self._llm_caller is None:
@@ -117,7 +120,7 @@ class EvolutionMutator:
                 rationale="no LLM caller configured",
             )
 
-        prompt = self._build_prompt(current, failures, artifact_type, schema)
+        prompt = self._build_prompt(current, failures, artifact_type, schema, lessons=lessons)
         last_error = ""
         for attempt in range(self._max_retries + 1):  # 首次 + max_retries
             try:
@@ -136,6 +139,7 @@ class EvolutionMutator:
                 prompt = self._build_prompt(
                     current, failures, artifact_type, schema,
                     error_hint="Strict JSON required. Output ONLY JSON, no markdown.",
+                    lessons=lessons,
                 )
                 logger.warning("EvolutionMutator JSON parse failed, retry %d", attempt + 1)
             except _SchemaMismatchError as e:
@@ -143,6 +147,7 @@ class EvolutionMutator:
                 prompt = self._build_prompt(
                     current, failures, artifact_type, schema,
                     error_hint=f"Schema error: {e}. Fix and retry.",
+                    lessons=lessons,
                 )
                 logger.warning("EvolutionMutator schema mismatch, retry %d", attempt + 1)
             except _IllegalFieldError as e:
@@ -150,6 +155,7 @@ class EvolutionMutator:
                 prompt = self._build_prompt(
                     current, failures, artifact_type, schema,
                     error_hint=f"Illegal field: {e}. Valid extractors/filters listed in schema.",
+                    lessons=lessons,
                 )
                 logger.warning("EvolutionMutator illegal field, retry %d", attempt + 1)
             except Exception as e:
@@ -157,6 +163,7 @@ class EvolutionMutator:
                 prompt = self._build_prompt(
                     current, failures, artifact_type, schema,
                     error_hint=f"LLM call failed: {e}. Retry.",
+                    lessons=lessons,
                 )
                 logger.warning("EvolutionMutator LLM call failed: %s, retry %d", e, attempt + 1)
 
@@ -176,10 +183,12 @@ class EvolutionMutator:
         schema: dict,
         *,
         error_hint: str = "",
+        lessons: tuple[str, ...] = (),
     ) -> str:
-        """构造 LLM prompt（42 文档 §7.7 骨架 + error_hint 重试）."""
+        """构造 LLM prompt（42 文档 §7.7 骨架 + error_hint 重试 + L3 lessons）."""
         current_json = _serialize_current(current, artifact_type)
         failure_cases = _serialize_failure_samples(failures)
+        lessons_section = _serialize_lessons(lessons) if lessons else ""
 
         prompt = f"""You are a template evolution specialist. Analyze failure patterns and propose
 an improved template. Output strictly as JSON matching the schema.
@@ -192,7 +201,7 @@ Failure statistics (last 24h):
 
 Representative failure cases (top samples):
 {failure_cases}
-
+{lessons_section}
 Available extractors: {schema.get('available_extractors', [])}
 Available filters: {schema.get('available_filters', [])}
 Available skill_selectors: {schema.get('available_selectors', [])}
@@ -326,6 +335,16 @@ def _serialize_failure_samples(failures: FailureStats) -> str:
                 "severity": r.severity,
             })
     return json.dumps(samples, indent=2)
+
+
+def _serialize_lessons(lessons: tuple[str, ...]) -> str:
+    """序列化 L3 DecisionLog lessons（L2 演化时作输入样本，L3-7.4 决策 b）."""
+    if not lessons:
+        return ""
+    lines = ["Historical lessons from past runs (L3 DecisionLog):"]
+    for i, lesson in enumerate(lessons, 1):
+        lines.append(f"  {i}. {lesson}")
+    return "\n".join(lines) + "\n"
 
 
 def _validate_extractors(

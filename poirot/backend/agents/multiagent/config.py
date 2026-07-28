@@ -41,6 +41,7 @@ class L2Config:
     intent_delegate_rate_threshold: float = 0.2
     intent_ability_failure_threshold: float = 0.5
     intent_metadata_sample_size: int = 20
+    l3_enabled: bool = False
 
 
 @dataclass(frozen=True)
