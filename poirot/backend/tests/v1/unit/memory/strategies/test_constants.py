@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from poirot.backend.agents.memory.strategies.default._constants import (
     ASSOCIATE_DEFAULTS,
+    BM25_PARAMS,
     CONSOLIDATE_PARAMS,
     DECAY_COEFFICIENTS,
     DECAY_PARAMS,
@@ -76,3 +77,14 @@ class TestAssociateDefaults:
 
     def test_max_associations_per_trace_20(self) -> None:
         assert ASSOCIATE_DEFAULTS["max_associations_per_trace"] == 20
+
+
+class TestBm25Params:
+    def test_k1_1_5(self) -> None:
+        assert BM25_PARAMS["k1"] == 1.5
+
+    def test_b_0_75(self) -> None:
+        assert BM25_PARAMS["b"] == 0.75
+
+    def test_epsilon_0_25(self) -> None:
+        assert BM25_PARAMS["epsilon"] == 0.25

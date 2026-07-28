@@ -50,3 +50,10 @@ ASSOCIATE_DEFAULTS = {
     "default_type": "related",   # related / causal / temporal / contrast
     "max_associations_per_trace": 20,  # 单 trace 最大关联数（防膨胀，D3 LRU 淘汰）
 }
+
+# BM25 检索参数（50 §4 Step 2 HybridRetriever）
+BM25_PARAMS = {
+    "k1": 1.5,       # TF 饱和参数（词频归一，1.2~2.0 典型）
+    "b": 0.75,       # 文档长度归一参数（0=不考虑长度，1=完全归一）
+    "epsilon": 0.25, # IDF 下限平滑（防负 IDF）
+}
