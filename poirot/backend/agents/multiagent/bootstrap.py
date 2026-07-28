@@ -88,6 +88,8 @@ class MultiAgentSetup:
     metrics_store: MultiAgentMetricsStore | None
     orchestration_middleware: OrchestrationMiddleware | None
     specialist_tools: tuple[BaseTool, ...]
+    # L2 evolution layer (None when config.l2.enabled=false)
+    l2_setup: Any | None = None
 
 
 _EMPTY_SETUP = MultiAgentSetup(
@@ -96,6 +98,7 @@ _EMPTY_SETUP = MultiAgentSetup(
     metrics_store=None,
     orchestration_middleware=None,
     specialist_tools=(),
+    l2_setup=None,
 )
 
 
@@ -234,14 +237,22 @@ def setup_multiagent(
         return _EMPTY_SETUP
 
     metrics = MultiAgentMetricsStore(config.metrics_db_path)
-    orch_mw = OrchestrationMiddleware(metrics_store=metrics)
+
+    # L2 evolution layer assembly (enabled=false -> l2_setup=None, L1 behavior unchanged)
+    from poirot.backend.agents.multiagent.evolution.bootstrap import setup_l2
+    l2_setup = setup_l2(config, metrics)
+
+    orch_mw = OrchestrationMiddleware(
+        metrics_store=metrics,
+        l2_trigger_middleware=l2_setup.l2_trigger_middleware if l2_setup else None,
+        budget_guard=l2_setup.budget_guard if l2_setup else None,
+    )
     specialist_registry = SpecialistRegistry()
     tools: list[BaseTool] = []
 
     for name in config.specialists_use:
         loaded = _load_specialist(name, config, agent_factory=agent_factory)
         if loaded is None:
-            # Bug C 修复（设计文档 46 §4.4）：凭证缺失或加载失败时 warn 提示安装步骤
             _warn_specialist_disabled(name, "credential missing or load failed")
             continue
         specialist, ctx_summarizer, result_summarizer = loaded
@@ -254,6 +265,8 @@ def setup_multiagent(
                 result_summarizer,
                 max_steps=config.max_steps,
                 timeout_seconds=config.timeout_seconds,
+                version_dag=l2_setup.version_dag if l2_setup else None,
+                budget_guard=l2_setup.budget_guard if l2_setup else None,
             )
         )
 
@@ -277,10 +290,15 @@ def setup_multiagent(
             )
         )
 
+    # Start L2 daemon thread if L2 enabled
+    if l2_setup is not None:
+        l2_setup.worker.start()
+
     return MultiAgentSetup(
         specialist_registry=specialist_registry,
         subagent_provider=subagent_provider,
         metrics_store=metrics,
         orchestration_middleware=orch_mw,
         specialist_tools=tuple(tools),
+        l2_setup=l2_setup,
     )
