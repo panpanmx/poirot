@@ -169,3 +169,24 @@ class TestDefaultMemoryProviderFrozen:
         retriever = _MockRetriever()
         provider = build_default_provider(store=store, retriever=retriever)
         assert dataclasses.is_dataclass(provider)
+
+
+class TestBuildDefaultProviderNoArgs:
+    def test_no_args_instantiate_from_config(self, tmp_path) -> None:
+        """Layer 3 完整版：无参时从 config 实例化 MarkdownFileStore + HybridRetriever。"""
+        from dataclasses import replace
+
+        from poirot.backend.agents.memory.config import get_memory_config, set_memory_config
+        from poirot.backend.agents.memory.strategies.default.retriever import HybridRetriever
+        from poirot.backend.agents.memory.strategies.default.store import MarkdownFileStore
+
+        original = get_memory_config()
+        try:
+            new_config = replace(original, storage_path=str(tmp_path))
+            set_memory_config(new_config)
+            provider = build_default_provider()
+            assert isinstance(provider.store(), MarkdownFileStore)
+            assert isinstance(provider.retriever(), HybridRetriever)
+            assert isinstance(provider.manager(), DefaultMemoryManager)
+        finally:
+            set_memory_config(original)

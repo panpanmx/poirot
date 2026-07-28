@@ -4,8 +4,8 @@
 + `49-memory-l2-default-strategies.md` §4 Step 5。
 
 Layer 1：空骨架，build_default_provider() 返 NotImplementedError 占位。
-Layer 2（本实现）：部分组装 — 接收 store + retriever 参数注入，组装 manager + decay + forget。
-Layer 3：store.py / retriever.py 实现后，bootstrap.py（Layer 4）实例化并注入。
+Layer 2：部分组装 — 接收 store + retriever 参数注入，组装 manager + decay + forget。
+Layer 3（本实现）：完整版 — 从 config 实例化 MarkdownFileStore + HybridRetriever，组装 DefaultMemoryProvider。
 
 INVARIANT：
 - DefaultMemoryProvider frozen dataclass，三组件构造时注入，运行时不可变
@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from poirot.backend.agents.memory.config import get_memory_config
 from poirot.backend.agents.memory.memory_manager import MemoryManager
 from poirot.backend.agents.memory.memory_provider import MemoryProvider
 from poirot.backend.agents.memory.memory_store import MemoryStore
@@ -25,6 +26,8 @@ from poirot.backend.agents.memory.retriever import Retriever
 from poirot.backend.agents.memory.strategies.default.decay import EbbinghausDecayPolicy
 from poirot.backend.agents.memory.strategies.default.forget import CompositeForgetPolicy
 from poirot.backend.agents.memory.strategies.default.manager import DefaultMemoryManager
+from poirot.backend.agents.memory.strategies.default.retriever import HybridRetriever
+from poirot.backend.agents.memory.strategies.default.store import MarkdownFileStore
 
 
 @dataclass(frozen=True)
@@ -61,17 +64,17 @@ class DefaultMemoryProvider:
 
 def build_default_provider(
     *,
-    store: MemoryStore,
-    retriever: Retriever,
+    store: MemoryStore | None = None,
+    retriever: Retriever | None = None,
     decay_policy: EbbinghausDecayPolicy | None = None,
     forget_policy: CompositeForgetPolicy | None = None,
     journal: Callable[[str, dict], None] | None = None,
 ) -> MemoryProvider:
-    """组装默认 MemoryProvider（Layer 2 部分组装，store/retriever 注入式）。
+    """组装默认 MemoryProvider（Layer 3 完整版）。
 
     Args:
-        store: 持久化后端（Layer 3 MarkdownFileStore / 测试 mock）
-        retriever: 检索后端（Layer 3 HybridRetriever / 测试 mock）
+        store: 持久化后端（None 时从 config 实例化 MarkdownFileStore）
+        retriever: 检索后端（None 时从 store + decay_policy 实例化 HybridRetriever）
         decay_policy: 衰减策略（None 时默认 EbbinghausDecayPolicy）
         forget_policy: 遗忘策略（None 时默认 CompositeForgetPolicy）
         journal: 事件回调（traceability B，None 时不发事件；Layer 4 注入 RunJournal）
@@ -79,11 +82,19 @@ def build_default_provider(
     Returns:
         DefaultMemoryProvider（组合三组件）
 
-    Layer 2：store/retriever/journal 由调用方注入（测试用 mock，Layer 3 后用真实实例）。
-    Layer 4 bootstrap.py：get_memory_provider() 调此函数，注入 MarkdownFileStore + HybridRetriever + RunJournal。
+    Layer 3：store/retriever 默认从 config 实例化（Layer 4 bootstrap 调此函数）。
+    Layer 4 注入 journal（RunJournal）。
     """
+    config = get_memory_config()
     decay = decay_policy or EbbinghausDecayPolicy()
     forget = forget_policy or CompositeForgetPolicy(decay)
+
+    # Layer 3 完整实例化（store/retriever 未注入时从 config 建）
+    if store is None:
+        store = MarkdownFileStore(config.storage_path)
+    if retriever is None:
+        retriever = HybridRetriever(store, decay)
+
     manager = DefaultMemoryManager(
         store=store,
         decay_policy=decay,
