@@ -14,9 +14,9 @@ from typing import Any, override
 
 from langchain.agents.middleware.types import AgentMiddleware
 
-from poirot.backend.agents.multiagent.l2.metrics_view import MetricsView
-from poirot.backend.agents.multiagent.l2.trigger_manager import TriggerManager
-from poirot.backend.agents.multiagent.l2.types import EvolutionTask, TriggerSource
+from poirot.backend.agents.multiagent.evolution.metrics_view import MetricsView
+from poirot.backend.agents.multiagent.evolution.trigger_manager import TriggerManager
+from poirot.backend.agents.multiagent.evolution.types import EvolutionTask, TriggerSource
 from poirot.backend.agents.state.types import ThreadState
 
 

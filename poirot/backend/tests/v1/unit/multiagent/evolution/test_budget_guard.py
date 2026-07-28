@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.budget_guard import (
+from poirot.backend.agents.multiagent.evolution.budget_guard import (
     BudgetGuard,
     BudgetLimit,
 )
-from poirot.backend.agents.multiagent.l2.types import CostRecord
+from poirot.backend.agents.multiagent.evolution.types import CostRecord
 
 
 @pytest.fixture

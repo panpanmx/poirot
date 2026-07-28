@@ -12,15 +12,15 @@ import queue
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.metrics_view import (
+from poirot.backend.agents.multiagent.evolution.metrics_view import (
     GlobalMetricsSnapshot,
     SpecialistMetricsSnapshot,
 )
-from poirot.backend.agents.multiagent.l2.trigger_manager import (
+from poirot.backend.agents.multiagent.evolution.trigger_manager import (
     TriggerManager,
     TriggerThresholds,
 )
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     FailureCategory,
     TriggerSource,
 )
@@ -241,7 +241,7 @@ def test_enqueue_writes_to_queue():
     """enqueue 写 queue.Queue."""
     mv = _MockMetricsView()
     tm = _make_tm()
-    from poirot.backend.agents.multiagent.l2.types import EvolutionTask
+    from poirot.backend.agents.multiagent.evolution.types import EvolutionTask
 
     task = EvolutionTask(
         task_id="t1", profile="default", trigger_source=TriggerSource.PERIODIC
@@ -259,7 +259,7 @@ def test_per_profile_serial_by_daemon_thread():
     """
     mv = _MockMetricsView()
     tm = _make_tm()
-    from poirot.backend.agents.multiagent.l2.types import EvolutionTask
+    from poirot.backend.agents.multiagent.evolution.types import EvolutionTask
 
     for i in range(5):
         tm.enqueue(EvolutionTask(

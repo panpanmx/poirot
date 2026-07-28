@@ -9,8 +9,8 @@
 """
 from __future__ import annotations
 
-from poirot.backend.agents.multiagent.l2.metrics_view import MetricsView
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.metrics_view import MetricsView
+from poirot.backend.agents.multiagent.evolution.types import (
     FailureCategory,
     FailureRecord,
     FailureStats,

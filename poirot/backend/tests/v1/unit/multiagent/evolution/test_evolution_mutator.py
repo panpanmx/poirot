@@ -15,12 +15,12 @@ from typing import Any
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.evolution_mutator import (
+from poirot.backend.agents.multiagent.evolution.evolution_mutator import (
     EvolutionMutator,
     EvolutionResult,
     LLMCaller,
 )
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     ContextSummaryTemplate,
     FailureCategory,
     FailureStats,
@@ -53,7 +53,7 @@ def _make_stats(
         by_category=by_category,
         dominant_category=dominant,
         sample_failures={dominant: [
-            __import__("poirot.backend.agents.multiagent.l2.types", fromlist=["FailureRecord"]).FailureRecord(
+            __import__("poirot.backend.agents.multiagent.evolution.types", fromlist=["FailureRecord"]).FailureRecord(
                 specialist_name="codex", goal="g", success_criteria="sc",
                 failure_category=dominant, severity=0.9,
             )

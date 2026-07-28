@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.metrics_view import (
+from poirot.backend.agents.multiagent.evolution.metrics_view import (
     GlobalMetricsSnapshot,
     MetricsView,
     SpecialistMetricsSnapshot,
 )
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     FailureCategory,
     FailureRecord,
 )
@@ -223,7 +223,7 @@ def test_l2_not_import_multiagent_metrics_store():
     import ast
     from pathlib import Path
 
-    import poirot.backend.agents.multiagent.l2.metrics_view as mv_module
+    import poirot.backend.agents.multiagent.evolution.metrics_view as mv_module
 
     source = Path(mv_module.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)

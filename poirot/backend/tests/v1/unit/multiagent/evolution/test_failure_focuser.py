@@ -11,15 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.failure_focuser import (
+from poirot.backend.agents.multiagent.evolution.failure_focuser import (
     FailureFocuser,
     select_failure_samples,
 )
-from poirot.backend.agents.multiagent.l2.metrics_view import (
+from poirot.backend.agents.multiagent.evolution.metrics_view import (
     GlobalMetricsSnapshot,
     SpecialistMetricsSnapshot,
 )
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     FailureCategory,
     FailureRecord,
 )
@@ -254,7 +254,7 @@ def test_analyze_mixed_dominant_is_max_evolvable():
 
 def test_failure_focuser_not_call_llm():
     """FailureFocuser 不调 LLM（INV-4）。查源码无 LLM 调用关键字."""
-    import poirot.backend.agents.multiagent.l2.failure_focuser as mod
+    import poirot.backend.agents.multiagent.evolution.failure_focuser as mod
 
     source = Path(mod.__file__).read_text(encoding="utf-8").lower()
     assert "llm.invoke" not in source

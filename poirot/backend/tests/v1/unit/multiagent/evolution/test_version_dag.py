@@ -17,11 +17,11 @@ from typing import Any
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     ContextSummaryTemplate,
     SkillInjectionTemplate,
 )
-from poirot.backend.agents.multiagent.l2.version_dag import VersionDAG
+from poirot.backend.agents.multiagent.evolution.version_dag import VersionDAG
 
 
 @dataclass(frozen=True)

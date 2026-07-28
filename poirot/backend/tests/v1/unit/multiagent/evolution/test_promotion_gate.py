@@ -15,14 +15,14 @@ from typing import Any
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.promotion_gate import (
+from poirot.backend.agents.multiagent.evolution.promotion_gate import (
     EvalResult,
     EvalTask,
     Evaluator,
     PromotionGate,
     _wilson_ci,
 )
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     ContextSummaryTemplate,
     PromotionDecision,
 )

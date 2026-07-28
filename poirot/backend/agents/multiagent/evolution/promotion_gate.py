@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     EvolutionArtifact,
     PromotionDecision,
 )

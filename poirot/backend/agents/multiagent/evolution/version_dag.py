@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from poirot.backend.agents.journal.events import utc_now_iso
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     ContextSummaryTemplate,
     EvolutionArtifact,
     SkillInjectionTemplate,

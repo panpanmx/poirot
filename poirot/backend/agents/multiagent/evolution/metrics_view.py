@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, TypedDict, runtime_checkable
 
-from poirot.backend.agents.multiagent.l2.types import FailureCategory, FailureRecord
+from poirot.backend.agents.multiagent.evolution.types import FailureCategory, FailureRecord
 
 
 class SpecialistMetricsSnapshot(TypedDict):

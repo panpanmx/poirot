@@ -15,16 +15,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.metrics_view import (
+from poirot.backend.agents.multiagent.evolution.metrics_view import (
     GlobalMetricsSnapshot,
     SpecialistMetricsSnapshot,
 )
-from poirot.backend.agents.multiagent.l2.trigger_manager import (
+from poirot.backend.agents.multiagent.evolution.trigger_manager import (
     TriggerManager,
     TriggerThresholds,
 )
-from poirot.backend.agents.multiagent.l2.trigger_middleware import L2TriggerMiddleware
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.trigger_middleware import L2TriggerMiddleware
+from poirot.backend.agents.multiagent.evolution.types import (
     FailureCategory,
     TriggerSource,
 )
@@ -78,7 +78,7 @@ def test_after_model_not_call_llm():
     """after_model 不调 LLM（INV-4）。查源码无 LLM 调用关键字."""
     from pathlib import Path
 
-    import poirot.backend.agents.multiagent.l2.trigger_middleware as mod
+    import poirot.backend.agents.multiagent.evolution.trigger_middleware as mod
 
     source = Path(mod.__file__).read_text(encoding="utf-8").lower()
     # 实现文件不应含 LLM 调用关键字

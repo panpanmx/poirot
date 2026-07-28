@@ -15,8 +15,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from poirot.backend.agents.multiagent.l2.metrics_view import MetricsView
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.metrics_view import MetricsView
+from poirot.backend.agents.multiagent.evolution.types import (
     EvolutionTask,
     FailureCategory,
     TriggerSource,

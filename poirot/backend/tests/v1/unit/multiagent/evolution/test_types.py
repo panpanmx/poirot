@@ -14,7 +14,7 @@ import dataclasses
 
 import pytest
 
-from poirot.backend.agents.multiagent.l2.types import (
+from poirot.backend.agents.multiagent.evolution.types import (
     BudgetCheckResult,
     BudgetRemaining,
     ContextSummaryTemplate,
