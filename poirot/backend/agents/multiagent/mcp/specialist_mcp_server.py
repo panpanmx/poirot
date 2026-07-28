@@ -265,30 +265,57 @@ class SpecialistMcpServer:
             )
 
 
-def _create_local_sandbox(sandbox_id: str) -> Sandbox:
-    """为独立入口构造 local Sandbox（复用 LocalSandboxProvider 的组件构造方式）。"""
-    from poirot.backend.agents.sandbox.guards.audit_guard import AuditGuard
-    from poirot.backend.agents.sandbox.guards.local_security_guard import (
-        LocalSecurityGuard,
-    )
-    from poirot.backend.agents.sandbox.runtimes.local_runtime import LocalRuntime
-    from poirot.backend.agents.sandbox.translators.local_path_translator import (
-        LocalPathTranslator,
-    )
+def _create_sandbox(args: argparse.Namespace) -> Sandbox:
+    """根据 args 选 runtime:有 --sandbox-url 用 DockerRuntime 连 lead 容器,否则 fallback Local。
 
-    runtime = LocalRuntime(allow_host_bash=True)
-    translator = LocalPathTranslator([])
-    guard = AuditGuard(LocalSecurityGuard([]))
-    return Sandbox(sandbox_id, runtime, translator, guard)
+    --sandbox-url 有(块 D3):DockerRuntime + DockerPathTranslator + DockerPathGuard
+        → specialist 连 lead Docker 容器,写入落同一挂载区。
+    --sandbox-url 无:fallback LocalRuntime + LocalPathTranslator + LocalSecurityGuard
+        → LocalSandboxProvider 场景(现状)。
+    """
+    from poirot.backend.agents.sandbox.guards.audit_guard import AuditGuard
+    from poirot.backend.agents.sandbox.sandbox import Sandbox
+
+    if args.sandbox_url:
+        from poirot.backend.agents.sandbox.guards.docker_path_guard import (
+            DockerPathGuard,
+        )
+        from poirot.backend.agents.sandbox.runtimes.docker_runtime import DockerRuntime
+        from poirot.backend.agents.sandbox.translators.docker_path_translator import (
+            DockerPathTranslator,
+        )
+        runtime = DockerRuntime(args.sandbox_url)
+        translator = DockerPathTranslator(args.sandbox_root, args.sandbox_id)
+        guard = AuditGuard(DockerPathGuard())
+    else:
+        from poirot.backend.agents.sandbox.guards.local_security_guard import (
+            LocalSecurityGuard,
+        )
+        from poirot.backend.agents.sandbox.runtimes.local_runtime import LocalRuntime
+        from poirot.backend.agents.sandbox.translators.local_path_translator import (
+            LocalPathTranslator,
+        )
+        runtime = LocalRuntime(allow_host_bash=True)
+        translator = LocalPathTranslator([])
+        guard = AuditGuard(LocalSecurityGuard([]))
+    return Sandbox(args.sandbox_id, runtime, translator, guard)
 
 
 def main(argv: list[str] | None = None) -> None:
-    """独立入口：python -m poirot.backend.agents.multiagent.mcp.specialist_mcp_server --sandbox-id {id}"""
+    """独立入口:python -m ...specialist_mcp_server --sandbox-id {id} [--sandbox-url URL]"""
     parser = argparse.ArgumentParser(description="Poirot Specialist MCP Server")
     parser.add_argument("--sandbox-id", required=True, help="Sandbox ID to bind")
+    parser.add_argument(
+        "--sandbox-url", default=None, help="Docker sandbox URL (lead container)"
+    )
+    parser.add_argument(
+        "--sandbox-root",
+        default=None,
+        help="Docker sandbox host root (for reverse_translate)",
+    )
     args = parser.parse_args(argv)
 
-    sandbox = _create_local_sandbox(args.sandbox_id)
+    sandbox = _create_sandbox(args)
     server = SpecialistMcpServer(sandbox)
     asyncio.run(server.run())
 

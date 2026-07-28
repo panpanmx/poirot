@@ -7,7 +7,7 @@ import pytest
 
 from poirot.backend.agents.multiagent.mcp.specialist_mcp_server import (
     SpecialistMcpServer,
-    _create_local_sandbox,
+    _create_sandbox,
     main,
 )
 from poirot.backend.agents.sandbox.exceptions import (
@@ -235,7 +235,12 @@ def test_main_requires_sandbox_id():
 
 
 def test_create_local_sandbox():
-    """_create_local_sandbox 构造 Sandbox 实例（local runtime + translator + guard）。"""
-    sandbox = _create_local_sandbox("test-sb-id")
+    """_create_sandbox (无 --sandbox-url) 构造 local Sandbox 实例。"""
+    import argparse
+
+    args = argparse.Namespace(
+        sandbox_id="test-sb-id", sandbox_url=None, sandbox_root=None
+    )
+    sandbox = _create_sandbox(args)
     assert isinstance(sandbox, Sandbox)
     assert sandbox.id == "test-sb-id"
