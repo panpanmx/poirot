@@ -102,7 +102,7 @@ class TestAafterModel:
     @pytest.mark.anyio
     async def test_thread_id_from_state(self) -> None:
         worker = _make_worker()
-        middleware = MemoryConsolidationMiddleware(worker, trigger_every_n_turns=3)
+        middleware = MemoryConsolidationMiddleware(worker, trigger_every_n_turns=2)
         msgs = [HumanMessage(content="a"), AIMessage(content="b"), HumanMessage(content="c")]
         state = {"messages": msgs, "thread_id": "my-thread-123"}
 

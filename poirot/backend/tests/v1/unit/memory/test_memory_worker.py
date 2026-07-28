@@ -193,7 +193,7 @@ class TestMaybeConsolidate:
         llm = _make_llm("merged")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1))
 
         manager.consolidate.assert_not_called()
         llm.invoke.assert_not_called()
@@ -206,7 +206,7 @@ class TestMaybeConsolidate:
         llm = _make_llm("merged content")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1))
 
         manager.consolidate.assert_called_once()
 
@@ -218,7 +218,7 @@ class TestMaybeConsolidate:
         llm = _make_llm("merged")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1))
 
         args = manager.consolidate.call_args[0]
         assert len(args[0]) == 10  # E1 max
@@ -231,7 +231,7 @@ class TestMaybeConsolidate:
         llm.invoke.side_effect = RuntimeError("LLM down")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1))
 
         manager.consolidate.assert_not_called()
 
@@ -243,4 +243,4 @@ class TestMaybeConsolidate:
         llm = _make_llm("merged")
         worker = MemoryWorker(manager, llm)
 
-        worker._maybe_consolidate(MemoryTask("t1", [], 1), [])
+        worker._maybe_consolidate(MemoryTask("t1", [], 1))

@@ -110,9 +110,9 @@ class MemoryWorker:
         """单任务处理:抽取 + consolidate。"""
         set_turn_id(f"worker:{task.thread_id}:{task.turn_count}")
         try:
-            encoded_ids = self._extract_and_encode(task)
-            if encoded_ids:
-                self._maybe_consolidate(task, encoded_ids)
+            self._extract_and_encode(task)
+            # consolidate 查 store 总量,不依赖本轮抽取结果
+            self._maybe_consolidate(task)
         finally:
             set_turn_id(None)
 
@@ -148,10 +148,10 @@ class MemoryWorker:
                 logger.warning(f"worker: encode failed for item {item}: {exc}")
         return ids
 
-    def _maybe_consolidate(self, task: MemoryTask, candidate_ids: list[str]) -> None:
+    def _maybe_consolidate(self, task: MemoryTask) -> None:
         """检查 consolidate 条件 + LLM 生成 merged + manager.consolidate。
 
-        查 store 中非 forgotten episodic trace 总量(不是单轮候选数),
+        查 store 中非 forgotten episodic trace 总量,
         总量 ≥ threshold 时取最旧 max=10 条做 consolidate。
         """
         config = get_memory_config()

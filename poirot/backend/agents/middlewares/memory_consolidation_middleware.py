@@ -18,6 +18,7 @@ import logging
 from typing import Any
 
 from langchain.agents.middleware.types import AgentMiddleware
+from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
 from poirot.backend.agents.memory.worker import MemoryTask, MemoryWorker
@@ -53,8 +54,9 @@ class MemoryConsolidationMiddleware(AgentMiddleware):
         self, state: ThreadState, runtime: Runtime
     ) -> dict[str, Any] | None:
         messages = state.get("messages", []) or []
-        turn_count = len(messages)
-        if turn_count == 0 or turn_count % self._n != 0:
+        # turn_count 只算 HumanMessage(用户轮次),不算 tool/AI/memory_recall
+        user_turn_count = sum(1 for m in messages if isinstance(m, HumanMessage))
+        if user_turn_count == 0 or user_turn_count % self._n != 0:
             return None
 
         # 取最近 N*2 条（N 轮 ≈ 2N messages，避免 token 爆炸）
@@ -68,11 +70,11 @@ class MemoryConsolidationMiddleware(AgentMiddleware):
         except Exception:
             thread_id = state.get("thread_id", "unknown")
         task = MemoryTask(
-            thread_id=thread_id, messages=recent, turn_count=turn_count,
+            thread_id=thread_id, messages=recent, turn_count=user_turn_count,
         )
         self._worker.submit(task)
         logger.debug(
             f"MemoryConsolidationMiddleware submitted task: "
-            f"thread={thread_id} turn={turn_count}"
+            f"thread={thread_id} turn={user_turn_count}"
         )
         return None

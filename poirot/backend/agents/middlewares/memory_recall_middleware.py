@@ -160,7 +160,15 @@ class MemoryMiddleware(AgentMiddleware):
     def _build_turn_id(self, state: ThreadState, runtime: Runtime) -> str:
         """构造 turn_id（traceability C，关联记忆操作到对话轮次）。
 
-        简化：用 message 数作 turn 标识。Layer 4 可后续改进（从 runtime 取 thread_id）。
+        从 runtime config 取 thread_id + message 数作 turn 标识。
         """
         messages = state.get("messages", []) or []
-        return f"turn:{len(messages)}"
+        # thread_id 优先从 runtime config 取
+        thread_id = "unknown"
+        try:
+            config = getattr(runtime, "config", None) or {}
+            configurable = config.get("configurable", {}) if isinstance(config, dict) else {}
+            thread_id = configurable.get("thread_id") or state.get("thread_id") or "unknown"
+        except Exception:
+            thread_id = state.get("thread_id", "unknown")
+        return f"{thread_id}:turn:{len(messages)}"

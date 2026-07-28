@@ -100,7 +100,7 @@ class TestSetTurnId:
         # abefore_model 调 set_turn_id(turn_id)
         assert len(calls) >= 1
         assert calls[0] is not None
-        assert calls[0].startswith("turn:")
+        assert ":turn:" in calls[0]
 
     def test_after_model_clears_turn_id(self, monkeypatch) -> None:
         calls = _patch_set_turn_id(monkeypatch)
