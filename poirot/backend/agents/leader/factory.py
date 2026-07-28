@@ -63,6 +63,7 @@ def _build_middlewares(
     orchestration_middleware: Any = None,
     memory_provider: Any = None,
     memory_config: Any = None,
+    memory_worker: Any = None,
 ) -> list:
     """全模式全挂 middleware，参数化控制行为差异。
 
@@ -125,6 +126,19 @@ def _build_middlewares(
             enable_extract=memory_config.enable_extract if memory_config else False,
             token_budget=memory_config.token_budget if memory_config else 2000,
         ))
+    # L5 Memory Consolidation: MemoryMiddleware 后(HelpRequest 前)
+    if memory_worker is not None:
+        from poirot.backend.agents.middlewares.memory_consolidation_middleware import (
+            MemoryConsolidationMiddleware,
+        )
+        trigger_n = (
+            memory_config.phase2.get("trigger_every_n_turns", 10)
+            if memory_config else 10
+        )
+        middlewares.append(MemoryConsolidationMiddleware(
+            worker=memory_worker,
+            trigger_every_n_turns=trigger_n,
+        ))
     middlewares.extend([
         HelpRequestMiddleware(),
         DanglingToolCallMiddleware(),
@@ -165,6 +179,7 @@ def make_lead_agent(
     orchestration_middleware: Any = None,
     memory_provider: Any = None,
     memory_config: Any = None,
+    memory_worker: Any = None,
 ) -> Any:
     """App-layer factory: expert_flag 参数化装配 graph。
 
@@ -223,7 +238,7 @@ def make_lead_agent(
         graph=create_agent(
             model=model,
             tools=tools or None,
-            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server, mcp_audit_middleware, skill_injection_middleware, skill_metrics_middleware, orchestration_middleware, memory_provider, memory_config),
+            middleware=_build_middlewares(resolved_expert, model, context_governance, summarize_model, sandbox_provider, artifact_server, mcp_audit_middleware, skill_injection_middleware, skill_metrics_middleware, orchestration_middleware, memory_provider, memory_config, memory_worker),
             system_prompt=apply_prompt_template(
                 expert_mode=resolved_expert,
                 specialist_registry=_safe_get_specialist_registry(registry),

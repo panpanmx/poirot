@@ -14,6 +14,11 @@ from langchain_core.language_models import BaseChatModel
 from poirot.backend.agents.artifacts.local_store import LocalArtifactStore
 from poirot.backend.agents.capabilities.registry import CapabilityRegistry
 from poirot.backend.agents.config.loader import load_config
+from poirot.backend.agents.memory.bootstrap import (
+    get_memory_worker,
+    shutdown_memory_worker,
+    start_memory_worker,
+)
 from poirot.backend.agents.config.provider_config import ProviderConfig, select_provider_config
 from poirot.backend.agents.config.schema import AppConfig
 from poirot.backend.agents.journal.events import utc_now_iso
@@ -154,6 +159,7 @@ class AppRuntime:
             orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
             memory_provider=getattr(self.capability_registry, "memory_provider", None),
             memory_config=self.config.memory,
+            memory_worker=get_memory_worker(),
         )
         self.thread_journal.append("mode.switched", {
             "expert_mode": expert_mode,
@@ -195,6 +201,7 @@ class AppRuntime:
             orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
             memory_provider=getattr(self.capability_registry, "memory_provider", None),
             memory_config=self.config.memory,
+            memory_worker=get_memory_worker(),
         )
         self.thread_journal.append("mcp.tools_reloaded", {"thread_id": self.thread_id})
         return AppRuntime(
@@ -253,6 +260,7 @@ class AppRuntime:
             orchestration_middleware=self.multiagent_setup.orchestration_middleware if self.multiagent_setup else None,
             memory_provider=getattr(self.capability_registry, "memory_provider", None),
             memory_config=self.config.memory,
+            memory_worker=get_memory_worker(),
         )
         self.thread_journal.append("model.switched", {
             "provider": provider,
@@ -602,6 +610,7 @@ def bootstrap_runtime(
             orchestration_middleware=None,     # leaf 不挂 OrchestrationMiddleware
             memory_provider=memory_provider,
             memory_config=config.memory,
+            memory_worker=get_memory_worker(),
         )
 
     ma_setup = setup_multiagent(
@@ -610,6 +619,11 @@ def bootstrap_runtime(
     )
 
     memory_provider = _load_memory_provider(config)
+    memory_worker = None
+    if memory_provider is not None:
+        memory_worker = start_memory_worker(memory_provider.manager(), researcher_model)
+        import atexit
+        atexit.register(shutdown_memory_worker)
     registry = CapabilityRegistry(
         models={"researcher": researcher_model, "reporter": reporter_model},
         tools=all_tools,
@@ -634,6 +648,7 @@ def bootstrap_runtime(
         orchestration_middleware=ma_setup.orchestration_middleware,
         memory_provider=memory_provider,
         memory_config=config.memory,
+        memory_worker=memory_worker,
     )
     thread_journal.append("agent.constructed", {
         "expert_mode": expert_mode,
