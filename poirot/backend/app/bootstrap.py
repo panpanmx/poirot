@@ -19,6 +19,7 @@ from poirot.backend.agents.memory.bootstrap import (
     shutdown_memory_worker,
     start_memory_worker,
 )
+from poirot.backend.agents.memory.config import set_memory_config
 from poirot.backend.agents.config.provider_config import ProviderConfig, select_provider_config
 from poirot.backend.agents.config.schema import AppConfig
 from poirot.backend.agents.journal.events import utc_now_iso
@@ -618,6 +619,8 @@ def bootstrap_runtime(
         agent_factory=_subagent_factory,
     )
 
+    # 同步 AppConfig.memory → 全局单例（middleware/worker/manager 从 get_memory_config() 取）
+    set_memory_config(config.memory)
     memory_provider = _load_memory_provider(config)
     memory_worker = None
     if memory_provider is not None:

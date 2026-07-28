@@ -181,4 +181,15 @@ def load_multiagent_config() -> MultiAgentConfig:
         specialists_pi_auto_install=_env_bool("POIROT_MULTIAGENT_PI_AUTO_INSTALL", True),
         specialists_pi_model=os.getenv("POIROT_MULTIAGENT_PI_MODEL", ""),
         specialists_pi_thinking_level=os.getenv("POIROT_MULTIAGENT_PI_THINKING", "medium"),
+        l2=L2Config(
+            enabled=_env_bool("POIROT_MULTIAGENT_L2_ENABLED", False),
+            cron_interval_hours=_env_float("POIROT_MULTIAGENT_L2_CRON_HOURS", 6.0),
+            cooldown_seconds=_env_float("POIROT_MULTIAGENT_L2_COOLDOWN", 3600.0),
+            evolution_model=os.getenv("POIROT_MULTIAGENT_L2_MODEL") or None,
+            l3_enabled=_env_bool("POIROT_MULTIAGENT_L3_ENABLED", False),
+        ),
+        l3=L3Config(
+            enabled=_env_bool("POIROT_MULTIAGENT_L3_ENABLED", False),
+            llm_judge_model=os.getenv("POIROT_MULTIAGENT_L3_JUDGE_MODEL") or None,
+        ),
     )

@@ -15,6 +15,7 @@ from poirot.backend.agents.config.schema import (
     RuntimeConfig,
     ToolConfig,
 )
+from poirot.backend.agents.memory.config import MemoryConfig
 from poirot.backend.agents.sandbox.integration.config import SandboxConfig
 
 
@@ -92,6 +93,22 @@ def _build_sandbox_config() -> SandboxConfig:
     )
 
 
+def _build_memory_config() -> MemoryConfig:
+    """从 POIROT_MEMORY_* 环境变量构造 MemoryConfig（懒加载，use 为空=禁用）。"""
+    return MemoryConfig(
+        use=os.environ.get("POIROT_MEMORY_USE", ""),
+        storage_path=os.environ.get("POIROT_MEMORY_STORAGE_PATH", ".poirot/memory"),
+        enable_recall=os.environ.get("POIROT_MEMORY_ENABLE_RECALL", "true").lower() != "false",
+        enable_extract=os.environ.get("POIROT_MEMORY_ENABLE_EXTRACT", "false").lower() == "true",
+        token_budget=int(os.environ.get("POIROT_MEMORY_TOKEN_BUDGET", "2000") or "2000"),
+        phase2={
+            "enabled": os.environ.get("POIROT_MEMORY_PHASE2_ENABLED", "false").lower() == "true",
+            "trigger_every_n_turns": int(os.environ.get("POIROT_MEMORY_PHASE2_TURNS", "10") or "10"),
+            "trigger_on_session_end": True,
+        },
+    )
+
+
 def _build_config(raw: dict[str, Any]) -> AppConfig:
     return AppConfig(
         name=raw["name"],
@@ -104,6 +121,7 @@ def _build_config(raw: dict[str, Any]) -> AppConfig:
         observability=ObservabilityConfig(**raw["observability"]),
         context_governance=ContextGovernanceConfig(**raw.get("context_governance", {})),
         sandbox=_build_sandbox_config(),
+        memory=_build_memory_config(),
     )
 
 
