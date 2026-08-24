@@ -125,13 +125,50 @@ Poirot 同时踩在三条赛道上，每条都比"全程"少走半步——这�
 
 接下来的七节跟随一条消息从进入系统到最终渲染的旅程。每节的起点是上一节留下的问题：主循环撑起骨架，但上下文会爆 → 治理和记忆接住 → 但方法论不沉淀 → 技能系统接住 → 但单 agent 有边界 → 委派解决 → 但委派需要进化评估 → 闭环接住 → 但执行要安全边界 → 沙箱接住 → 最后，用户怎么用？UI 与装配收尾。
 
-### 4.1 第一站：主循环与横切框架——一条消息如何穿过 21 个中间件
+### 4.1 第一站：主循环与横切框架——一条消息如何穿过 24 个中间件
 
 **读者带着的问题：这个系统凭什么能把记忆、技能、沙箱、上下文治理全部做成插件？**
 
-答案：`leader/factory.py:80-164` 的 `_build_middlewares` 是**唯一装配点**，24 个中间件（含治理公共 3）按固定顺序挂载在五个钩子上。装配由构造参数决定（`expert_mode`、provider 非空才挂对应中间件），循环里没有一个 if——这就是"中间件一等公民"的全部秘密：**骨架够薄、钩子够稳，任何横切能力都能挂上去而不动内核。**
+一句话答案：**主循环是 148 行的薄壳，横切能力全部是挂在一个唯一装配点上的中间件，装配由构造参数决定、逻辑里没有一个 if。** 这一节回答三个递进的问题：中间件从哪来（装配）、挂在哪（钩子）、凭什么协同不打架（账本 + 闸门 + 防御）。
 
-#### 五个钩子的分工与纪律
+#### 4.1.1 装配点：一切从这里长出来
+
+**答案的物理起点是 `_build_middlewares`**——全项目唯一装配点。它做的事只有一件：按固定顺序把中间件实例排进一个 list，交给 LangGraph 的 `create_agent` 编译成图。挂载顺序不是随意的，源码注释就是挂载哲学：
+
+```
+治理层（公共3 + StrategyMiddleware）→ SystemContext → SkillInjection → SkillMetrics
+→ Title → RunJournal → MCP Audit → Sandbox → 记忆 → HelpRequest → DanglingToolCall
+→ ToolCall → Evidence → Stall → Todo → Reflection → Report
+```
+
+**读图约定（全节通用）：** 圆角矩形 = 阶段/动作 · 菱形 = 判定 · 圆柱 = 数据存储 · 虚线 = 条件/可选关系
+
+```mermaid
+flowchart TB
+    F(factory._build_middlewares<br/>唯一装配点) -->|无条件| A[中间件链<br/>治理 → 系统上下文 → Title/Journal<br/>→ 退出闸门 → 报告]
+    F -.参数非空才挂.-> B[Skill · Sandbox · 记忆 · MCP]
+    A --> G(LangGraph 编译图)
+    B -.-> G
+    G --> H((五个钩子))
+```
+
+三个值得记住的细节：
+
+1. **开关在装配表，不在逻辑里。** 记忆、沙箱、技能全部是"参数非空才挂"。摘掉一个能力 = 少传一个参数，**不是删一段代码**。系统退化为更小的系统，而不是崩掉。
+2. **同一模块不同策略也用参数化区分。** expert_mode 不是全局 if，而是逐中间件传参：Todo 的完成度强制开关、Reflection 的判定策略（轻量 or 充分性）都在装配时选定。**default 模式和 expert 模式是同一套中间件的参数差，不是两套代码。**
+3. **连"移除一个中间件"都是装配层的事。** LoopDetection（死循环熔断）被注释掉而不是删除，注释写明原因"用户要求取消循环上限约束"。防御机制与产品偏好解耦，想恢复就取消注释——这是"装配即配置"的极致形态。
+
+| 概念 | 出处 |
+|---|---|
+| 装配点主体 | [factory.py:53-164](poirot/backend/agents/leader/factory.py#L53-L164) |
+| 挂载顺序注释 | [factory.py:76-78](poirot/backend/agents/leader/factory.py#L76-L78) |
+| 沙箱 / 记忆条件挂载 | [factory.py:107](poirot/backend/agents/leader/factory.py#L107) / [factory.py:120](poirot/backend/agents/leader/factory.py#L120) |
+| expert_mode 参数化 | [factory.py:156-160](poirot/backend/agents/leader/factory.py#L156-L160) |
+| LoopDetection 移除注释 | [factory.py:145-148](poirot/backend/agents/leader/factory.py#L145-L148) |
+
+#### 4.1.2 五个钩子：骨架薄到什么程度，钩子就稳到什么程度
+
+中间件不是随便实现的，它们统一继承 LangChain 的 `AgentMiddleware`，实现 5 个钩子协议：
 
 | 钩子 | 时机 | 用途 |
 |---|---|---|
@@ -141,31 +178,189 @@ Poirot 同时踩在三条赛道上，每条都比"全程"少走半步——这�
 | `after_model` | 每次模型推理后 | **检查点**：三个退出闸门（Stall→Todo→Reflection）+ 记忆整合 |
 | `wrap_tool_call` | 每次工具执行 | 路由（Sandbox/MCP/Builtin）、账本、证据沉淀、审计 |
 
-最精妙的一条纪律：**检查点全放 after_model，注入点全放 before_model**。因为 after_model 时 ToolMessage 已全部就位（此时检测、排队不会破坏消息配对）；before_model 注入的 HumanMessage 追加在消息尾，天然合法。反之，在 wrap_tool_call 里注入会把 HumanMessage 插进并行工具调用的 ToolMessage 之间——下一轮模型调用直接 400。这个坑被完整记录在 [tool_call_middleware.py:148-152](poirot/backend/agents/middlewares/tool_call_middleware.py) 的注释里。**这是"真实运行时解析"哲学在消息格式层面的体现：不按直觉设计，按运行时约束设计。**
+```mermaid
+flowchart TD
+    U[用户输入] --> BA(before_agent<br/>run 开始 · 记基线)
+    BA --> BM(before_model<br/>注入: 治理/技能/记忆/失败摘要)
+    BM --> M[模型推理]
+    M --> AM(after_model<br/>检查: 三闸门 + 记忆整合)
+    AM -->|调用工具| WT(wrap_tool_call<br/>路由 + 记账 + 证据)
+    WT -->|ToolMessage 就位| BM
+    AM -->|直接作答| AA(after_agent<br/>报告/标题/指标归因)
+```
 
-#### 工具账本：全模块最精妙的发明
+**最精妙的一条纪律：注入点全放 before_model，检查点全放 after_model。** 这是由运行时约束倒逼出来的，不是风格偏好：
 
-工具失败信息要跨轮（checkpointer 持久化）、跨中间件（Todo/Reflection 要读"持续失败"信号）、跨 run（多轮 chat）可见。Poirot 的选择是把账本写进 state——`AgentError` 扩展出 `kind/tool_name/attempt/error_type` 字段（[types.py:128-133](poirot/backend/agents/state/types.py)），一次工具调用成败都记一条，成功归零该工具连续失败计数。于是：
+- **after_model 时 ToolMessage 已全部就位。** 检测、排队、记忆整合在这里做，不会破坏消息配对；
+- **before_model 注入的 HumanMessage 追加在消息尾，天然合法。** 反之，在 wrap_tool_call 里注入会把 HumanMessage 插进并行工具调用的 ToolMessage 之间——下一轮模型调用直接 400。
 
-- **per-tool 连续失败计数**、**禁工具/硬预算短路**、**失败摘要递进注入**（第 3/6/9 次失败时合成结构化摘要）全部从 state 派生，不需要中间件私有状态跨轮保存；
-- per-run 计数靠 before_agent 记录 baseline 区分——跨 run 的"禁工具"不会被误继承；
-- 代价是 state 膨胀（`MAX_ERRORS=100` 有界化）、errors 字段语义从"错误"扩展为"账本"。
+这个坑被完整记录在源码注释里：
 
-#### 退出闸门：三个中间件管三件事
+```python
+# failure_summary + budget_exhausted 提示用队列延迟到 before_model 注入，
+# 避免在 wrap_tool_call 注入 HumanMessage 插在并行 tool_calls 的 ToolMessage 之间
+# 破坏 API pairing（AIMessage(tool_calls) 后必须紧跟 ToolMessage）。
+```
 
-`after_model` 链上三个退出闸门判据互补：**Stall** 管"是否卡死"（工具持续失败才暂停，与完成度无关）；**Todo** 管"完成度"（强制时）；**Reflection** 管"实质充分性"（todos 全完成后才判）。三层语义不重叠：完成≠充分≠不死。它们共享一个 per-run jump 预算（`_jump_budget.py`，合计 ≤3）——否则 Todo 提醒→模型重跑→Reflection 提醒→模型重跑会形成双重强制死循环。**共享预算把总跳转钉死在 3 次**，这是"组合系统需要组合级治理"的微型缩影。
+由此演化出 Poirot 的招牌模式——**"排队-注入"**：wrap_tool_call 只记账、把提示塞进队列，before_model 再统一取出来注入。**这是"真实运行时解析"哲学在消息格式层面的体现：不按直觉设计，按运行时约束设计。** 学到这里你应该注意到：钩子语义不是对称的，每条钩子纪律都源于一个具体的 400 错误。
 
-#### 防御性中间件：把 LLM 的不确定性当一等公民
+> **出处：** [tool_call_middleware.py:150-152](poirot/backend/agents/middlewares/tool_call_middleware.py#L150-L152)（坑注释）· [tool_call_middleware.py:281-284](poirot/backend/agents/middlewares/tool_call_middleware.py#L281-L284)（入队）· [tool_call_middleware.py:311-319](poirot/backend/agents/middlewares/tool_call_middleware.py#L311-L319)（统一注入）· [memory_recall_middleware.py:25](poirot/backend/agents/middlewares/memory_recall_middleware.py#L25)（继承 AgentMiddleware）
 
-LangGraph 的配对约束（`AIMessage(tool_calls)` 后必须紧跟 `ToolMessage`）是 400 级错误，一次断裂整条任务报废。Poirot 有三条防线：DanglingToolCall 在 before_model 补占位 ToolMessage（暂停/中断后恢复）；Stall 暂停前补全；ToolCall 异常时合成 error ToolMessage。**checkpointer 存下的历史永远格式良好。**
+#### 4.1.3 工具账本：全模块最精妙的发明
 
-一个值得注意的产品决策：LoopDetection（死循环熔断）已从注册表移除（[factory.py:145-148](poirot/backend/agents/leader/factory.py) 注释：用户要求取消循环上限），ToolCall 的 `_RETRY_BUDGET/_HARD_BUDGET` 也放宽到 999——**防御机制与产品偏好解耦，开关在装配表里，不在逻辑里**。代价是纯 token 消耗型死循环（每次成功但无进展）目前缺乏检测。
+**问题：工具失败信息要跨三个维度可见。** 跨轮（checkpointer 持久化）、跨中间件（Todo/Reflection 要读"持续失败"信号）、跨 run（多轮 chat 会话）。如果每个中间件用自己的私有状态存，跨轮就断了——私有状态不随 checkpointer 持久化。
 
-#### 与业界对比
+**方案：把账本写进 state。** errors 字段从"本轮错误列表"升级为"工具调用账本"，AgentError 为此扩展出 kind、tool_name、attempt、error_type、reason 五个字段：
 
-- **deer-flow**（明确借鉴对象）：Poirot 从它借了 checkpointer 单例、悬空修补、循环检测等模式，但把 deer-flow 的"主循环内嵌逻辑"升级为 middleware 化——这是从"单体"到"可插拔"的架构跃迁。
-- **LangGraph 1.x**：Poirot 是第一批把 `AgentMiddleware` 当主架构用的项目。框架提供机制（五个钩子），但不提供跨中间件协同（顺序、预算、状态生命周期）——这些是 Poirot 的增量贡献。
-- **Koa 洋葱模型**：wrap_tool_call 链是同构的洋葱（ToolCall 最外看到全部结果），但 LangChain 没有 Koa 的 `next()` 穿越能力——Poirot 用"排队-注入"模式弥补（wrap_tool_call 只记账排队，before_model 才注入），这是个值得学习的替代方案。
+```python
+@dataclass(frozen=True)
+class AgentError:
+    error_id: str
+    stage: str
+    message: str
+    related_refs: tuple[str, ...] = field(default_factory=tuple)
+    created_at: str | None = None
+    # F8.1：errors 升级为工具调用账本，扩展字段（带默认值兼容既有构造）
+    kind: str = "failure"           # "failure" / "success"
+    tool_name: str = ""
+    attempt: int = 0                # 该 tool 连续失败次（成功归 0）
+    error_type: str = ""            # F5 分类
+    reason: str = ""                # F8.2 原因模板
+```
+
+**成败都记，成功归零**——这是账本区别于"错误日志"的关键设计。看 `_process_result`：异常记 failure、业务失败记 failure、**成功也记一条 attempt=0**。于是"per-tool 连续失败次数"不是一个计数器，而是**从 state 派生**的：从 errors 里倒着找该工具最新一条的 attempt 即可。**状态即真相，没有第二份计数器需要同步。**
+
+```mermaid
+flowchart TD
+    WT(wrap_tool_call<br/>洋葱最外层) --> J{成败判定}
+    J -->|失败| C[失败分类<br/>异常 / 业务特征 / status=error]
+    J -->|成功| S[记 attempt=0]
+    C --> E[写账本 AgentError<br/>kind · attempt · error_type]
+    S --> E
+    E --> ST[(state.errors<br/>跨轮共享 · 上限 100)]
+    E -->|第 3/6/9 次失败| Q[摘要入队]
+    Q -->|before_model 时机| INJ[注入模型上下文]
+    ST --> CON[Todo / Reflection<br/>attempt≥3 → 放行退出]
+```
+
+这套设计的三个精妙点：
+
+**① 失败分类是分层的。** 第一层判异常类型：超时/连接错误归为 network，API 限流归为 rate_limit，服务端 5xx 归为 server_error。第二层更隐蔽：工具"成功"返回 HTTP 200，但内容里带着 blocked、forbidden、no results 这类**业务失败特征**——拿不到数据，对研究任务同样是失败，不能放过。两层都归入统一的 error_type 字段，Todo/Reflection 读到的是可判断的信号，而不是一团错误文本。
+
+**② per-run 计数靠 baseline 而不是清空。** 多轮 chat 里 errors 会跨 run 累积，直接数会让"禁工具"误伤下一轮。解法：before_agent 记录 errors 长度基线，所有 per-run 判断用基线之后的切片。**账本在 state（跨中间件共享），计数器在私有 dict（跨 run 隔离）**——两类状态的分工刻意不同：要共享的进 state，要隔离的留在中间件内存里。
+
+**③ 有界化防膨胀。** reducer 只保留最近 100 条。**任何写进 state 的通道都必须回答"它会涨到多大"**——这是 state 设计的通用纪律。
+
+账本的**消费者**验证了它跨中间件的价值：Todo 的 `_has_persistent_failures` 读 errors，发现任一工具连续失败 3 次以上就**放行退出**——工具都失败了还强制"完成所有 todo"是折磨模型。Reflection 用同一个函数。**一个信号，两个消费者，零复制。**
+
+| 概念 | 出处 |
+|---|---|
+| AgentError 定义 | [types.py:121-133](poirot/backend/agents/state/types.py#L121-L133) |
+| 记账主流程 | [tool_call_middleware.py:219-271](poirot/backend/agents/middlewares/tool_call_middleware.py#L219-L271) |
+| 异常分类（F5） | [tool_call_middleware.py:67-88](poirot/backend/agents/middlewares/tool_call_middleware.py#L67-L88) |
+| 业务失败特征 | [tool_call_middleware.py:91-97](poirot/backend/agents/middlewares/tool_call_middleware.py#L91-L97) |
+| attempt 派生 | [tool_call_middleware.py:128-133](poirot/backend/agents/middlewares/tool_call_middleware.py#L128-L133) |
+| baseline / 切片 | [tool_call_middleware.py:326-339](poirot/backend/agents/middlewares/tool_call_middleware.py#L326-L339) / [tool_call_middleware.py:191-196](poirot/backend/agents/middlewares/tool_call_middleware.py#L191-L196) |
+| 有界化 | [reducers.py:155-158](poirot/backend/agents/state/reducers.py#L155-L158) |
+| 消费者放行 | [todo_middleware.py:97-111](poirot/backend/agents/middlewares/todo_middleware.py#L97-L111) / [reflection_middleware.py:113-115](poirot/backend/agents/middlewares/reflection_middleware.py#L113-L115) |
+
+#### 4.1.4 退出闸门：三个中间件管三件事，共享一把预算
+
+模型何时"可以停止"是 ReAct 系统最模糊的决策。Poirot 把它拆成三个正交问题，由 after_model 链上三个中间件各自回答：
+
+| 闸门 | 回答的问题 | 判据 | 干预方式 |
+|---|---|---|---|
+| **Stall** | 卡死了吗？ | 工具持续失败（与完成度无关） | 暂停 + 求助，或强制收尾 |
+| **Todo** | 完成度够吗？（仅 expert 强制） | todos 有未完成项 | 排队提醒 + jump_to model |
+| **Reflection** | 实质充分吗？ | todos 全完成时每步有证据覆盖 | reflection_items + jump_to model |
+
+**三层语义刻意不重叠：完成 ≠ 充分 ≠ 不死。** 一个模型可以 todo 全绿但证据稀薄（Reflection 管）、可以一直失败但 todo 没变（Stall 管）、可以没失败但没做完（Todo 管）。
+
+```mermaid
+flowchart TD
+    AM(after_model 链) --> S{Stall<br/>卡死?}
+    S -->|是| P[暂停 + 求助<br/>3 次后强制收尾]
+    S -->|否| I{有工具<br/>调用意图?}
+    I -->|是| LOOP[继续 ReAct 循环]
+    I -->|否| TD{Todo 未完成<br/>且强制模式?}
+    TD -->|是| J1[排队提醒<br/>跳回模型]
+    TD -->|否| R{Reflection<br/>证据充分?}
+    R -->|否| J2[补研究提醒<br/>跳回模型]
+    R -->|是| EXIT(放行结束)
+    subgraph BUD[共享跳转预算 合计 ≤ 3]
+        J1
+        J2
+    end
+```
+
+**Stall——把"卡死"翻译成可计算信号。** 卡死判定在独立的 `StallTracker`（[stall_tracker.py:67-112](poirot/backend/agents/observability/stall_tracker.py#L67-L112)），三条信号：
+
+| 信号 | 阈值 | 含义 |
+|---|---|---|
+| 能力耗尽 | 同一能力（sandbox/network/docker…）5 个不同命令都失败 | 这条路走不通，不是偶然故障 |
+| 错误模式重复 | 同类错误出现 5 次 | 模型在重复同一个错误 |
+| Todo 停滞 | 同一 in_progress 项持续 15 轮 | 表面在跑，实际原地踏步 |
+
+最值得学的是**成功衰减窗口**：120 秒内有过一次成功工具调用，所有停滞信号全部抑制——避免在长任务正常推进时误判卡死。**判定不是无脑阈值，是"失败信号 vs 成功事实"的博弈。**
+
+Stall 的暂停时机同样守纪律：**wrap_tool_call 里只标记、不暂停**，等 after_model 里 ToolMessage 全部就位才真正暂停。求助上限 3 次，用尽后强制收尾。
+
+**Todo——三层防护管"忘做、不做、拖"三件事**：
+- **L1 上下文丢失检测**：todos 存在但消息里找不到 write_todos 调用 → 注入提醒（模型陷入执行忘了任务书）；
+- **L2 完成度强制**：模型想退出但 todos 未完成 → 排队提醒并跳回模型，最多 2 次；
+- **L3 Nag 双阈值**：距上次写 todos 5 轮以上，且距上次提醒也 5 轮以上，两个条件都满足才唠叨——第一个阈值防"忘了"，第二个防"刷屏"，**两个阈值缺一个都会变成骚扰或失明**。
+
+**Reflection——把"充分"也交出去。** 外壳 + 可替换策略：default 模式用恒放行的轻量策略（不强制补研究），expert 模式用充分性策略。充分性策略先按关键词把问题分类（研究类/闲聊类/混合）——**闲聊问题直接放行，避免"帮我选手机"被 reflection 拖进死循环**；然后只有 todos 全完成才判充分性（未完成的留给 Todo 闸门，职责不重叠）；覆盖度判断从"每步有无证据"的规则，到交给 LLM 评估，渐进增强。
+
+**共享 jump 预算——组合系统需要组合级治理。** 如果没有共享预算，Todo 提醒→模型重跑→Reflection 提醒→模型重跑会形成**双重强制死循环**。`_jump_budget` 把两个闸门的跳转合计钉死在 3 次：
+
+```python
+def try_consume(runtime: Runtime, max_total: int = _MAX_TOTAL_JUMPS) -> bool:
+    """原子地检查+消费一次跳转预算。True=已消费（预算可用），False=已耗尽。"""
+    k = _key(runtime)
+    with _lock:
+        n = _counts.get(k, 0)
+        if n >= max_total:
+            return False
+        _counts[k] = n + 1
+        return True
+```
+
+Todo 跳转前消费预算，Reflection 同样，run 结束时统一清除。**单独看每个闸门都合理，合起来必须有限额——这是"组合系统需要组合级治理"的微型缩影，也是你在自己项目里最容易漏掉的一层。**
+
+> **出处：** [stall_tracker.py:67-112](poirot/backend/agents/observability/stall_tracker.py#L67-L112)（三条信号）· [stall_tracker.py:90-92](poirot/backend/agents/observability/stall_tracker.py#L90-L92)（成功衰减窗口）· [stall_detection_middleware.py:56-64](poirot/backend/agents/middlewares/stall_detection_middleware.py#L56-L64)（只标记不暂停）· [stall_detection_middleware.py:157-172](poirot/backend/agents/middlewares/stall_detection_middleware.py#L157-L172)（after_model 暂停）· [stall_detection_middleware.py:123-155](poirot/backend/agents/middlewares/stall_detection_middleware.py#L123-L155)（强制收尾）· [todo_middleware.py:176-184](poirot/backend/agents/middlewares/todo_middleware.py#L176-L184)（Nag 双阈值）· [todo_middleware.py:274-279](poirot/backend/agents/middlewares/todo_middleware.py#L274-L279)（上限+jump 预算）· [reflection_middleware.py:55-125](poirot/backend/agents/middlewares/reflection_middleware.py#L55-L125)（双策略）· [reflection_middleware.py:84-92](poirot/backend/agents/middlewares/reflection_middleware.py#L84-L92)（问题分类）· [_jump_budget.py:26-34](poirot/backend/agents/middlewares/_jump_budget.py#L26-L34)（预算实现）· [todo_middleware.py:351](poirot/backend/agents/middlewares/todo_middleware.py#L351)（run 结束清除）
+
+#### 4.1.5 消息配对三防线：把 LLM 的不确定性当一等公民
+
+**背景知识：LangGraph 的配对约束。** `AIMessage(tool_calls=[...])` 之后必须紧跟对应的 `ToolMessage`，否则下一轮模型调用直接 400，**一次断裂整条任务报废**。中断恢复、暂停、异常——三种场景都会制造悬挂的 tool_calls。Poirot 有三条防线，各守一个时机：
+
+```mermaid
+flowchart LR
+    A[暂停/中断后恢复<br/>历史带悬挂 tool_calls] --> B[DanglingToolCall<br/>before_model 补占位]
+    C[Stall 跳 END 前] --> D[Stall 补 [Skipped] 占位]
+    E[工具执行抛异常] --> F[ToolCall 合成<br/>error ToolMessage]
+    B --> OK[(checkpointer<br/>历史永远配对完整)]
+    D --> OK
+    F --> OK
+```
+
+- **防线① DanglingToolCall**：before_model 扫描全部历史，收集已应答的 tool_call_id，给悬挂的补占位 ToolMessage。注意 docstring 里写着 "Borrowed from deer-flow DanglingToolCallMiddleware pattern"——诚实标注借鉴来源，是值得学习的开源习惯；
+- **防线② Stall 暂停前补全**：跳 END 前扫历史补 [Skipped — stall detected] 占位——否则下一次恢复会话时 checkpointer 恢复出悬挂调用，立刻 400；
+- **防线③ ToolCall 异常合成**：handler 抛异常时合成 status=error 的 ToolMessage，连"返回值为空"这种边界也补空 ToolMessage。
+
+> **出处：** [dangling_tool_call_middleware.py:51-79](poirot/backend/agents/middlewares/dangling_tool_call_middleware.py#L51-L79) · [dangling_tool_call_middleware.py:9](poirot/backend/agents/middlewares/dangling_tool_call_middleware.py#L9)（deer-flow 来源标注）· [stall_detection_middleware.py:93-114](poirot/backend/agents/middlewares/stall_detection_middleware.py#L93-L114) · [tool_call_middleware.py:243-249](poirot/backend/agents/middlewares/tool_call_middleware.py#L243-L249) · [tool_call_middleware.py:277-279](poirot/backend/agents/middlewares/tool_call_middleware.py#L277-L279)
+
+**三道防线守住同一个不变量：checkpointer 存下的历史永远格式良好。** 这是"防御式工程"哲学在消息层的实例——**不是假设模型不会犯错，而是假设它一定会犯错，然后在每个断裂点预备一条出路。**
+
+#### 4.1.6 与业界对比：Poirot 站在哪、多走了哪半步
+
+- **deer-flow**（明确借鉴对象）：借了 checkpointer 单例、悬空修补、循环检测等模式，但把 deer-flow 的"主循环内嵌逻辑"升级为 middleware 化——**这是从"单体"到"可插拔"的架构跃迁**。用架构术语说：deer-flow 的横切逻辑是编译期缝合的，Poirot 是运行时装配的；
+- **LangGraph 1.x**：Poirot 是第一批把 AgentMiddleware 当主架构用的项目。框架提供机制（五个钩子），**但不提供跨中间件协同**——顺序、预算、状态生命周期全是 Poirot 自己补的。这提醒我们：**框架只给钩子，不给纪律；纪律是应用层的事**；
+- **Koa 洋葱模型**：wrap_tool_call 链是同构的洋葱（ToolCall 最外看到全部结果），但 LangChain 没有 Koa 的 next() 穿越能力——**Poirot 用"排队-注入"模式弥补**。这是一个比"硬造 next()"更务实的替代方案：与其对抗框架模型，不如顺着它的时序约束设计自己的数据流。
+
+一个诚实的代价：LoopDetection 移除 + 重试预算放宽到 999 之后，**纯 token 消耗型死循环（每次成功但无进展）目前缺乏检测**——产品偏好（不打断长任务）压过了防御完备性，这是刻意取舍，不是疏漏。
+
+> **出处：** [factory.py:145-148](poirot/backend/agents/leader/factory.py#L145-L148)（LoopDetection 移除）· [tool_call_middleware.py:26-27](poirot/backend/agents/middlewares/tool_call_middleware.py#L26-L27)（预算放宽）
 
 **章节遗留问题：** reducer 只能保证"合并正确"，不能保证"上下文不爆"。循环每跑一轮，messages/observations 都在膨胀——谁能观察 token 用量、谁决定压缩？→ 下一站：上下文治理。
 

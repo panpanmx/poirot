@@ -87,7 +87,7 @@
 
 ### 2.1 先读报告
 
-`doc/ANALYSIS_REPORT.md` **§4.1「一条消息如何穿过 21 个中间件」**（约 128-172 行）。重点吸收：
+`doc/ANALYSIS_REPORT.md` **§4.1「一条消息如何穿过 24 个中间件」**（约 128-367 行）。重点吸收：
 - 洋葱模型 vs 线性管道的选择
 - 为什么中间件是 first-class citizen 而非写死在循环里
 - `app → agents` 单向依赖意味着什么
@@ -139,7 +139,7 @@
 
 ### 3.1 先读报告
 
-`ANALYSIS_REPORT.md` **§4.2「上下文治理 + 五层记忆——先别撑爆，再记住」**（172-255 行）。重点吸收：
+`ANALYSIS_REPORT.md` **§4.2「上下文治理 + 五层记忆——先别撑爆，再记住」**（368-450 行）。重点吸收：
 - token budget 为什么是一等公民，而不是拍脑袋阈值
 - 穿透 `FallbackChatModel` 取真实窗口的意义
 - compaction（压缩）vs externalization（外移）的分工
@@ -189,7 +189,7 @@
 
 ### 4.1 先读报告
 
-`ANALYSIS_REPORT.md` **§4.3「三层技能系统——唯一会自己改进自己的模块」**（255-313 行）。核心认知：
+`ANALYSIS_REPORT.md` **§4.3「三层技能系统——唯一会自己改进自己的模块」**（451-508 行）。核心认知：
 - **skill = 研究流程知识包（prompt 注入），tool = 可执行函数**——"如何验证一个信源"是技能，"执行一次搜索"是工具
 - 三层职责：L1 存储选择注入 → L2 进化（IVEFocuser 诊断 → LLMMutator 变异 → ScoreDeltaGate 门控 → GitRatchet 回滚）→ L3 评估（执行判定/质量打分/契约检查）
 - 四计数器：selections / applied / completions / fallbacks
@@ -222,7 +222,7 @@
 
 ### 5.1 先读报告
 
-`ANALYSIS_REPORT.md` **§4.4「多智能体编排——黑盒委派 + 共享沙箱」** + **§4.5「进化与评估闭环」**（313-425 行）。核心认知：
+`ANALYSIS_REPORT.md` **§4.4「多智能体编排——黑盒委派 + 共享沙箱」** + **§4.5「进化与评估闭环」**（509-620 行）。核心认知：
 - **委派（specialist）**：路由到外部 CLI（pi / codex / claude），独立进程 + 独立 LLM，但共享 Docker 沙箱
 - **自拷贝（subagent）**：Poirot 自己的副本，不继承消息历史，但通过 ContextVar 复用父沙箱
 - 为什么"共享沙箱"是核心突破：artifact 可跨 agent 传递
@@ -250,7 +250,7 @@
 
 ### 6.1 先读报告
 
-`ANALYSIS_REPORT.md` **§4.6「沙箱隔离 + MCP 工具生态——执行要安全，安全不能破坏交付」**（425-484 行）。核心认知：
+`ANALYSIS_REPORT.md` **§4.6「沙箱隔离 + MCP 工具生态——执行要安全，安全不能破坏交付」**（621-679 行）。核心认知：
 - Local（开发）/ Docker（生产）双 provider 的取舍
 - `DockerPathTranslator` 解决什么 bug（容器路径 vs Windows 宿主路径）
 - `DockerPathGuard` 为什么必须强制写路径在挂载区（`--rm` 容器内 /tmp 会丢）
@@ -284,7 +284,7 @@
 
 ### 7.1 先读报告
 
-`ANALYSIS_REPORT.md` **§4.7「双 UI 与装配——app → agents 单向依赖的物质化身」**（484-534 行）。
+`ANALYSIS_REPORT.md` **§4.7「双 UI 与装配——app → agents 单向依赖的物质化身」**（680 行起）。
 
 ### 7.2 源码阅读路径
 
