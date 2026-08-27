@@ -120,6 +120,7 @@ def test_oauth_file_future_not_expired(monkeypatch, tmp_path):
     cred_path = _write_json(tmp_path / "creds.json", _oauth_data(expires_at=future))
     monkeypatch.setenv("CLAUDE_CODE_CREDENTIALS_PATH", str(cred_path))
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
 
     cred = ClaudeCredentialProvider().get_credential()
 
@@ -132,6 +133,7 @@ def test_oauth_file_expired_returns_none(monkeypatch, tmp_path):
     cred_path = _write_json(tmp_path / "creds.json", _oauth_data(expires_at=past))
     monkeypatch.setenv("CLAUDE_CODE_CREDENTIALS_PATH", str(cred_path))
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
 
     cred = ClaudeCredentialProvider().get_credential()
 
@@ -149,6 +151,7 @@ def test_no_access_token_returns_none(monkeypatch, tmp_path):
     cred_path = _write_json(tmp_path / "creds.json", {"claudeAiOauth": {"refreshToken": "rt"}})
     monkeypatch.setenv("CLAUDE_CODE_CREDENTIALS_PATH", str(cred_path))
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     assert ClaudeCredentialProvider().get_credential() is None
 
 
@@ -156,6 +159,7 @@ def test_empty_access_token_returns_none(monkeypatch, tmp_path):
     cred_path = _write_json(tmp_path / "creds.json", _oauth_data(access_token=""))
     monkeypatch.setenv("CLAUDE_CODE_CREDENTIALS_PATH", str(cred_path))
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     assert ClaudeCredentialProvider().get_credential() is None
 
 
@@ -164,6 +168,7 @@ def test_invalid_json_returns_none(monkeypatch, tmp_path):
     bad.write_text("{invalid", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_CODE_CREDENTIALS_PATH", str(bad))
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     assert ClaudeCredentialProvider().get_credential() is None
 
 
@@ -184,4 +189,5 @@ def test_oauth_non_dict_returns_none(monkeypatch, tmp_path):
     cred_path = _write_json(tmp_path / "creds.json", {"claudeAiOauth": "not_a_dict"})
     monkeypatch.setenv("CLAUDE_CODE_CREDENTIALS_PATH", str(cred_path))
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     assert ClaudeCredentialProvider().get_credential() is None

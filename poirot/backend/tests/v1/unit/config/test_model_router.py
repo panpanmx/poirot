@@ -38,28 +38,28 @@ class _ClientErrModel(FakeListChatModel):
 
 # --- route_chain_for ---
 
-def test_researcher_chain_ends_with_deepseek() -> None:
-    prov = [_pc("openai"), _pc("qwen"), _pc("deepseek")]
+def test_researcher_chain_uses_sub2api() -> None:
+    prov = [_pc("sub2api"), _pc("openai"), _pc("qwen"), _pc("deepseek")]
     chain = route_chain_for("researcher", prov)
-    assert [p.provider for p in chain] == ["openai", "qwen", "deepseek"]
+    assert [p.provider for p in chain] == ["sub2api"]
 
 
 def test_reporter_chain() -> None:
-    prov = [_pc("openai"), _pc("qwen"), _pc("deepseek")]
+    prov = [_pc("sub2api"), _pc("openai"), _pc("qwen"), _pc("deepseek")]
     chain = route_chain_for("reporter", prov)
-    assert [p.provider for p in chain] == ["qwen", "deepseek"]
+    assert [p.provider for p in chain] == ["sub2api"]
 
 
-def test_deepseek_appended_as_fallback_when_missing_from_route() -> None:
-    prov = [_pc("openai"), _pc("deepseek")]
-    chain = route_chain_for("reflection", prov)  # route=["deepseek"]
-    assert [p.provider for p in chain] == ["deepseek"]
+def test_sub2api_appended_as_fallback_when_missing_from_route() -> None:
+    prov = [_pc("openai"), _pc("sub2api")]
+    chain = route_chain_for("reflection", prov)  # route=["sub2api"]
+    assert [p.provider for p in chain] == ["sub2api"]
 
 
-def test_unknown_role_defaults_to_deepseek() -> None:
-    prov = [_pc("deepseek")]
+def test_unknown_role_defaults_to_sub2api() -> None:
+    prov = [_pc("sub2api")]
     chain = route_chain_for("unknown_role", prov)
-    assert [p.provider for p in chain] == ["deepseek"]
+    assert [p.provider for p in chain] == ["sub2api"]
 
 
 def test_no_available_provider_raises() -> None:
@@ -113,14 +113,14 @@ def test_all_failures_raises_last() -> None:
 # --- ModelRouter ---
 
 def test_router_builds_fallback_chain_per_role() -> None:
-    router = ModelRouter(providers=[_pc("openai"), _pc("qwen"), _pc("deepseek")])
+    router = ModelRouter(providers=[_pc("sub2api"), _pc("openai"), _pc("qwen"), _pc("deepseek")])
     rm = router.build_model("researcher")
     assert isinstance(rm, FallbackChatModel)
-    assert rm.provider_names == ["openai", "qwen", "deepseek"]
+    assert rm.provider_names == ["sub2api"]
     pm = router.build_model("reporter")
-    assert pm.provider_names == ["qwen", "deepseek"]
+    assert pm.provider_names == ["sub2api"]
 
 
 def test_router_chain_names() -> None:
-    router = ModelRouter(providers=[_pc("openai"), _pc("deepseek")])
-    assert router.chain_names("researcher") == ["openai", "deepseek"]
+    router = ModelRouter(providers=[_pc("sub2api"), _pc("openai"), _pc("deepseek")])
+    assert router.chain_names("researcher") == ["sub2api"]

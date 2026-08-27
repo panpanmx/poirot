@@ -38,13 +38,21 @@ class ProviderProfile:
 # ── 注册表：所有内置 provider ──────────────────────────────────────────────
 # 新增 provider 只需在此列表追加一项 + .env.example 补对应 env 变量。
 PROVIDER_PROFILES: list[ProviderProfile] = [
-    # DeepSeek — 默认 provider，降级链尾兜底
+    # sub2api — 默认 provider（OpenAI 兼容，claude-opus-4-6-thinking）
+    ProviderProfile(
+        name="sub2api", kind="openai_compat",
+        env_key="SUB2API_API_KEY", env_base_url="SUB2API_BASE_URL", env_model="SUB2API_MODEL",
+        default_base_url="http://sub2api.2014123.xyz:8080/v1",
+        default_model="claude-opus-4-6-thinking", default_window=200_000,
+        priority=5, is_default=True,
+    ),
+    # DeepSeek — 降级兜底（不再是默认）
     ProviderProfile(
         name="deepseek", kind="deepseek",
         env_key="DEEPSEEK_API_KEY", env_base_url="DEEPSEEK_BASE_URL", env_model="DEEPSEEK_MODEL",
         default_base_url="https://api.deepseek.com",
         default_model="deepseek-v4-flash", default_window=200_000,
-        priority=10, is_default=True,
+        priority=10, is_default=False,
     ),
     # OpenAI — 官方 API
     ProviderProfile(

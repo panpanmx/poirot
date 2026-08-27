@@ -1,4 +1,4 @@
-"""ModelRouter — 角色化智能路由，按 MODEL_ROUTES 链构造 FallbackChatModel，deepseek 兜底。
+"""ModelRouter — 角色化智能路由，按 MODEL_ROUTES 链构造 FallbackChatModel，sub2api 兜底。
 
 - build_model(role)：按角色路由链构造 FallbackChatModel（多 provider 降级）
 - build_single(provider, model)：CLI --provider 强制单 provider（不路由，测试/调试用）
@@ -23,7 +23,7 @@ class ModelRouter:
         self._providers = providers if providers is not None else discover_available_providers()
 
     def build_model(self, role: str) -> BaseChatModel:
-        """按 MODEL_ROUTES[role] 链构造 FallbackChatModel，deepseek 兜尾。"""
+        """按 MODEL_ROUTES[role] 链构造 FallbackChatModel，sub2api 兜尾。"""
         chain = route_chain_for(role, self._providers)
         models = [build_chat_model(p) for p in chain]
         return FallbackChatModel(models=models, provider_names=[p.provider for p in chain])

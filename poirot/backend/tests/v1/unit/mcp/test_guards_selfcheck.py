@@ -1,5 +1,4 @@
 """Batch B3 self-check: guards (env_filter / credential_sanitizer / description_scanner)."""
-import os
 from poirot.backend.agents.mcp.guards import (
     CredentialSanitizer,
     DescriptionScanner,
@@ -8,34 +7,32 @@ from poirot.backend.agents.mcp.guards import (
 )
 
 
-def test_env_filter_whitelist():
+def test_env_filter_whitelist(monkeypatch):
     """宿主 secrets 不泄露，白名单变量保留。"""
-    os.environ["FAKE_AWS_KEY"] = "should_not_leak"
-    os.environ["PATH"] = "/usr/bin"
+    monkeypatch.setenv("FAKE_AWS_KEY", "should_not_leak")
+    monkeypatch.setenv("PATH", "/usr/bin")
     guard = EnvFilter()
     result = guard.check_env({"GITHUB_TOKEN": "ghp_declared"})
     assert "FAKE_AWS_KEY" not in result, "AWS_KEY should not leak"
     assert "PATH" in result, "PATH should be in whitelist"
     assert result["GITHUB_TOKEN"] == "ghp_declared", "config env should be merged"
-    del os.environ["FAKE_AWS_KEY"]
 
 
-def test_env_filter_config_overrides_whitelist():
+def test_env_filter_config_overrides_whitelist(monkeypatch):
     """config 声明优先于白名单。"""
-    os.environ["PATH"] = "/host/path"
+    monkeypatch.setenv("PATH", "/host/path")
     guard = EnvFilter()
     result = guard.check_env({"PATH": "/custom/path"})
     assert result["PATH"] == "/custom/path", "config env should override whitelist"
     print("PASS: env_filter config overrides whitelist")
 
 
-def test_env_filter_xdg_prefix():
+def test_env_filter_xdg_prefix(monkeypatch):
     """XDG_* 前缀全放行。"""
-    os.environ["XDG_CONFIG_HOME"] = "/home/user/.config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/home/user/.config")
     guard = EnvFilter()
     result = guard.check_env({})
     assert "XDG_CONFIG_HOME" in result
-    del os.environ["XDG_CONFIG_HOME"]
     print("PASS: env_filter XDG prefix")
 
 

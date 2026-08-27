@@ -18,7 +18,7 @@ def test_selects_explicit_provider_before_default() -> None:
 def test_selects_default_provider_when_not_explicit() -> None:
     config = select_provider_config(provider=None)
 
-    assert config.provider == "deepseek"
+    assert config.provider == "sub2api"
     assert config.default is True
 
 

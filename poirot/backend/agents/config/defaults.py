@@ -42,8 +42,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "strategy": "default",
         # window 不在此硬编码——由 DefaultStrategy.after_model 每轮调用
         # resolve_window_size(model) 动态解析当前活跃 provider 的真实窗口
-        # （FallbackChatModel 穿透到内层 ChatDeepSeek/ChatOpenAI 的 model_name，
-        # 命中 _MODEL_WINDOW_MAP：deepseek-v4-flash→200k / deepseek-chat→64k / …）。
+        # （FallbackChatModel 穿透到内层 ChatOpenAI 的 model_name，
+        # 命中 _MODEL_WINDOW_MAP：claude-opus-4-6-thinking→200k / …）。
         # 治理占比 fraction 以此真实窗口为分母，P5 熔断阈值才准确。
         "params": {},
     },

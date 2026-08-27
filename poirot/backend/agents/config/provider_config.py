@@ -94,14 +94,14 @@ def _find_provider(candidates: list[ProviderConfig], provider: str) -> ProviderC
 
 
 # ---------------------------------------------------------------------------
-# 智能路由（deepseek 兜底）
+# 智能路由（sub2api 兜底）
 # ---------------------------------------------------------------------------
 
-# 角色路由链：按顺序偏好，链尾恒含 deepseek（兜底）。
+# 角色路由链：按顺序偏好，链尾恒含 sub2api（兜底）。
 MODEL_ROUTES: dict[str, list[str]] = {
-    "researcher": ["openai", "qwen", "anthropic", "gemini", "deepseek"],
-    "reporter": ["qwen", "deepseek"],
-    "reflection": ["deepseek"],
+    "researcher": ["sub2api"],
+    "reporter": ["sub2api"],
+    "reflection": ["sub2api"],
 }
 
 
@@ -121,17 +121,17 @@ def _is_no_key(provider: str) -> bool:
 
 
 def route_chain_for(role: str, providers: list[ProviderConfig]) -> list[ProviderConfig]:
-    """按 MODEL_ROUTES[role] 顺序筛 provider；保证 deepseek 在链尾（若可用）。
+    """按 MODEL_ROUTES[role] 顺序筛 provider；保证 sub2api 在链尾（若可用）。
 
-    - role 未配置 → 默认 ["deepseek"]
-    - 链空或尾非 deepseek 且 deepseek 可用 → 追加 deepseek 兜底
+    - role 未配置 → 默认 ["sub2api"]
+    - 链空或尾非 sub2api 且 sub2api 可用 → 追加 sub2api 兜底
     - 无任何可用 → 抛 ProviderConfigError
     """
-    route = MODEL_ROUTES.get(role, ["deepseek"])
+    route = MODEL_ROUTES.get(role, ["sub2api"])
     by_name = {p.provider: p for p in providers}
     chain = [by_name[name] for name in route if name in by_name]
-    if "deepseek" in by_name and (not chain or chain[-1].provider != "deepseek"):
-        chain.append(by_name["deepseek"])
+    if "sub2api" in by_name and (not chain or chain[-1].provider != "sub2api"):
+        chain.append(by_name["sub2api"])
     if not chain:
         raise ProviderConfigError(f"no available provider for role: {role}")
     return chain

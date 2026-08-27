@@ -96,14 +96,36 @@
 | 失败 | 14 | 14 | 0（分类完全一致，见 §3） |
 | 总耗时 | — | 49.68s / 52.20s | 新增基线 |
 
-## 8. 数据出处
+## 8. 修复后状态（同日完成 P0-1）
+
+| 维度 | 修复前（§2） | 修复后 |
+|---|---|---|
+| 通过 / 失败 | 2704 / 14 | **2718 / 0** |
+| 跳过 | 4 | 4（docker CLI ×2 + TUI banner ×2，环境/未实现，不处理） |
+| 总耗时 | 49.68s | 47.22s |
+| 退出码 | 1 | **0** |
+
+修复动作（详见 TEST_IMPROVEMENT_PLAN §4 P0-1，均按计划"只修测试与模板，不改业务逻辑"）：
+
+1. **test_config_loader** — `max_loop_steps` 断言 8 → 100（跟随 EXPERT_PROFILE 实际值）
+2. **test_merge_sandbox** — state 字段集合补 `recalled_memories`、`memory_updates`
+3. **test_default_strategy** — 断言"对话历史" → "Conversation to Compress"（跟随模板英文化）
+4. **summarize.md 模板（业务缺陷，非测试错误）** — 英文化提交 5b6043f 翻译时丢失 `${messages_text}` 占位符（原文 `## 待压缩对话\n\n${messages_text}`），导致 P4 压缩时 LLM prompt 不含对话历史、压缩实质失效；已加回占位符
+5. **test_claude_credential ×6** — 各用例补 `monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)`（Claude Code 会话注入隔离）
+6. **test_guards_selfcheck（根修，非 14 失败名单内）** — 3 个用例裸改 `os.environ["PATH"]` 从不恢复，污染后续所有依赖真实 PATH 的测试（pi_installer ×4、bash_output_truncation ×1 即受害者）；改用 `monkeypatch` 自动恢复
+
+顺序回归对照（修复前必挂组合）：`guards → pi_installer → stage3` 37 个全通过。
+
+## 9. 数据出处
 
 | 数据 | 来源 |
 |---|---|
 | 全量结果 / 失败明细 | `.poirot/logs/test_reports/pytest_full_20260825.log`（`pytest -q --tb=short`） |
+| 修复后全量结果 | `.poirot/logs/test_reports/pytest_full_20260825_fixed.log`（`pytest -q --tb=short`，exit 0） |
 | 慢测试 / 跳过原因 | `.poirot/logs/test_reports/pytest_durations_20260825.log`（`pytest -q --durations=10 -rs --tb=no`） |
 | 目录分布 | 当日 `pytest --collect-only -q` 统计 |
-| 失败分类依据 | TEST_IMPROVEMENT_PLAN.md §4 P0-1（2026-08-25） |
+| 失败分类依据 / 修法 | TEST_IMPROVEMENT_PLAN.md §4 P0-1（2026-08-25） |
+| 模板占位符历史 | `git show 5b6043f~1:.../summarize.md`（英文化前含 `${messages_text}`） |
 | 2026-08-24 基线 | memory: poirot-env-setup |
 
 ---

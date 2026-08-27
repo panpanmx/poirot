@@ -282,7 +282,7 @@ def test_call_llm_uses_prompt_template() -> None:
     s = SummarizerExecutor(model=fake)
     result = s._call_llm([HumanMessage(content="Q1"), AIMessage(content="A1")])
     assert result == "summary"
-    assert "对话历史" in fake.received  # 模板内容
+    assert "Conversation to Compress" in fake.received  # 模板内容
     assert "[HumanMessage]" in fake.received  # history 格式
     assert "Q1" in fake.received
 

@@ -443,7 +443,7 @@ def bootstrap_runtime(
         "provider": provider or "default",
     })
 
-    # LLM construction — 角色化智能路由（deepseek 兜底），或 CLI --provider 强制单 provider。
+    # LLM construction — 角色化智能路由（sub2api 兜底），或 CLI --provider 强制单 provider。
     from poirot.backend.agents.config.model_router import ModelRouter
 
     router = ModelRouter()

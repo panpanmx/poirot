@@ -1,0 +1,4 @@
+# bench 运行中间产物（数据集、日志、SQLite、报告）不入库
+data/
+__pycache__/
+*.pyc

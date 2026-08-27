@@ -88,5 +88,6 @@ class TestThreadStateInitial:
             "messages", "user_input", "observations", "sources",
             "citations", "artifacts", "reflection_items", "errors",
             "metadata", "governance", "sandbox", "orchestration",
+            "recalled_memories", "memory_updates",
         }
         assert set(state.keys()) == expected_keys

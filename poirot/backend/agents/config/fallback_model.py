@@ -2,7 +2,7 @@
 
 包装一组 BaseChatModel（按角色优先级链），调用时从当前活跃 provider 试起；
 遇 API 错误（限流/超时/连接）自动降级到下一个，记忆活跃 provider 避免每轮重试主力。
-deepseek 作为链尾兜底。bind_tools 对链内每个 model 绑定，返回新的 FallbackChatModel。
+sub2api 作为链尾兜底。bind_tools 对链内每个 model 绑定，返回新的 FallbackChatModel。
 """
 
 from __future__ import annotations
