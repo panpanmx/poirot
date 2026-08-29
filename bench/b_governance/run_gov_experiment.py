@@ -96,7 +96,7 @@ def main() -> None:
 
             runtime = build_governance_runtime(
                 expert_mode=False,
-                provider="deepseek",
+                provider=os.environ.get("POIROT_PROVIDER", "sub2api"),
                 logs_root=RUNS_DIR,
                 governance_enabled=cell["gov"],
                 window_override=cell["window"],

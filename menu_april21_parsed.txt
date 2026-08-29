@@ -1,0 +1,539 @@
+Menus | Virtue Restaurant
+WebFont.load({google: { families: ["Tinos:400,700"] }});
+window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
+ga("create", "UA-128757935-51", "auto");
+ga("require", "autotrack");
+ga("send", "pageview");
+Modernizr.addTest("maybemobile", function(){ return (Modernizr.touchevents && Modernizr.mq("only screen and (max-width: 768px)")) ? true : false; });
+window.Sensei = { settings: { store: { enabled: false, cart_quantity: null }, gmaps: { apikey: "AIzaSyCxtTPdJqQMOwjsbKBO3adqPGzBR1MgC5g", styles: [ { "featureType": "all", "elementType": "all", "stylers": [ { "visibility": "on" }, { "color": "#f5f2eb" }, { "saturation": "29" } ] }, { "featureType": "all", "elementType": "labels.text.fill", "stylers": [ { "color": "#333333" }, { "lightness": 40 } ] }, { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [ { "visibility": "on" }, { "color": "#ffffff" }, { "lightness": 16 } ] }, { "featureType": "all", "elementType": "labels.icon", "stylers": [ { "visibility": "off" } ] }, { "featureType": "administrative", "elementType": "geometry.fill", "stylers": [ { "color": "#fefefe" }, { "lightness": 20 } ] }, { "featureType": "administrative", "elementType": "geometry.stroke", "stylers": [ { "color": "#fefefe" }, { "lightness": 17 }, { "weight": 1.2 } ] }, { "featureType": "landscape", "elementType": "geometry", "stylers": [ { "color": "#ede5da" }, { "lightness": 20 } ] }, { "featureType": "poi", "elementType": "geometry", "stylers": [ { "color": "#f6f2ec" }, { "lightness": 21 } ] }, { "featureType": "poi.park", "elementType": "geometry", "stylers": [ { "color": "#e4d7c7" }, { "lightness": 21 } ] }, { "featureType": "road.highway", "elementType": "geometry.fill", "stylers": [ { "color": "#ffffff" }, { "lightness": 17 } ] }, { "featureType": "road.highway", "elementType": "geometry.stroke", "stylers": [ { "color": "#ffffff" }, { "lightness": 29 }, { "weight": 0.2 } ] }, { "featureType": "road.arterial", "elementType": "geometry", "stylers": [ { "color": "#ffffff" }, { "lightness": 18 } ] }, { "featureType": "road.local", "elementType": "geometry", "stylers": [ { "color": "#ffffff" }, { "lightness": 16 } ] }, { "featureType": "transit", "elementType": "geometry", "stylers": [ { "color": "#f2f2f2" }, { "lightness": 19 } ] }, { "featureType": "water", "elementType": "geometry", "stylers": [ { "color": "#dbcab5" }, { "lightness": 17 } ] } ], icon: "https://images.getbento.com/accounts/8611498a7dcd1ea1602f40e4e0f741ab/media/images/25889virtue-marker.png", mobile_icon: "https%3A//images.getbento.com/accounts/8611498a7dcd1ea1602f40e4e0f741ab/media/images/25889virtue-marker.png%3Fw%3D50%26fit%3Dmax%26auto%3Dcompress%2Cformat" }, galleries: { autoplay: false, fade: true }, heros: { autoplay_galleries: true }, srcset_enabled: false }, modernizr: window.Modernizr };
+{"@context": "http://schema.org", "@type": "Organization", "@id": "https://www.virtuerestaurant.com/#organization", "url": "https://www.virtuerestaurant.com", "name": "Virtue Restaurant", "description": "Stationed in the Hyde Park neighborhood of Chicago, Virtue is a Southern American restaurant that leads with a culture of hospitality \u0026 kindness.", "logo": "https://images.getbento.com/tDcfNkpRUuO2Lg6uhVOL_virtue-main-logo.png?w=600\u0026fit=max\u0026auto=compress,format\u0026h=600", "subOrganization": {"@type": "FoodEstablishment", "@id": "https://www.virtuerestaurant.com/location/virtue-restaurant/#foodestablishment", "url": "https://www.virtuerestaurant.com/location/virtue-restaurant/", "name": "Virtue Restaurant", "description": "", "image": "", "photo": "", "address": {"@type": "PostalAddress", "name": "Virtue Restaurant", "streetAddress": "1462 E 53rd St.", "addressLocality": "Chicago", "addressRegion": "IL", "postalCode": "60615"}, "location": {"@type": "PostalAddress", "name": "Virtue Restaurant", "streetAddress": "1462 E 53rd St.", "addressLocality": "Chicago", "addressRegion": "IL", "postalCode": "60615"}, "telephone": "(773) 947-8831", "hasMap": "https://www.virtuerestaurant.com/location/virtue-restaurant/", "parentOrganization": {"@type": "Organization", "@id": "https://www.virtuerestaurant.com/#organization"}, "servesCuisine": "Southern American", "priceRange": "$35", "acceptsReservations": "https://www.virtuerestaurant.com", "potentialAction": {"@type": "ReserveAction", "object": {"@type": "Reservation", "name": "Table at Virtue Restaurant"}, "result": {"@type": "Reservation", "name": "Table at Virtue Restaurant"}, "target": "https://www.virtuerestaurant.com/location/virtue-restaurant/", "location": {"@id": "https://www.virtuerestaurant.com/location/virtue-restaurant/#foodestablishment"}}}, "sameAs": ["https://www.facebook.com/virtuerestaurant/", "https://www.instagram.com/virtuerestaurantchi/?hl=en", "https://www.yelp.com/biz/virtue-restaurant-chicago"], "potentialAction": [{"@type": "ReserveAction", "object": {"@type": "Reservation", "name": "Table", "url": "https://www.virtuerestaurant.com/#action-reservations"}, "result": {"@type": "Reservation", "name": "Table"}, "target": "https://www.virtuerestaurant.com"}, {"@type": "BuyAction", "object": {"@type": "Product", "name": "Product"}, "target": "https://www.virtuerestaurant.com/store/"}, {"@type": "BuyAction", "object": {"@type": "Product", "name": "Catering Product"}, "target": "https://www.virtuerestaurant.com/store/catering/"}]}
+{"@context": "http://schema.org", "@type": "Menu", "@id": "https://www.virtuerestaurant.com/menu/dine-in-small-large-rations-copy/#menu", "name": "dinner menu", "description": "click here to order dinner to go!", "hasMenuSection": [{"@type": "MenuSection", "name": "Small Rations", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "hoe cakes", "description": "pimento cheese, scallion", "image": null, "offers": {"@type": "Offer", "price": "7.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Gem Lettuce", "description": "radish, egg, tomato, ranch dressing, crispy black eyed peas", "image": null, "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "snap peas", "description": "butter lettuce, crunchy grains, harissa", "image": null, "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "asparagus", "description": "midnight moon cheese, fried ham, caesar dressing", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "broccoli", "description": "sweet peppers, candied pecans, cheddar", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Gizzards", "description": "dirty rice, gravy", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "green tomatoes", "description": "shrimp, leroy\u0027s remoulade", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "gumbo", "description": "chicken, andouille, rice", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "Large Rations", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "cauliflower", "description": "cashew dukkah spice, root cellar vegetables, rice", "image": null, "offers": {"@type": "Offer", "price": "21.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Walleye", "description": "crawfish \u0026 shrimp \u00e9touff\u00e9e, buttered grits", "image": null, "offers": {"@type": "Offer", "price": "25.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Salmon", "description": "Sweet peas, white beans, honey mustard", "image": null, "offers": {"@type": "Offer", "price": "25.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Pot roast", "description": "creamed asparagus, roasted potatoes", "image": null, "offers": {"@type": "Offer", "price": "32.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Catfish", "description": "blackened, carolina gold rice, barbeque carrots", "image": null, "offers": {"@type": "Offer", "price": "26.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "lemon chicken", "description": "roasted fennel, green beans, chicken jus", "image": null, "offers": {"@type": "Offer", "price": "24.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "bbq pork steak", "description": "smothered cabbage, granny smith apple", "image": null, "offers": {"@type": "Offer", "price": "30.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "Extra Rations", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "buttered grits", "description": "", "image": null, "offers": {"@type": "Offer", "price": "6.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "collards \u0026 smoked turkey", "description": "", "image": null, "offers": {"@type": "Offer", "price": "8.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "mac \u0026 cheese", "description": "", "image": null, "offers": {"@type": "Offer", "price": "9.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "cornbread \u0026 honey butter", "description": "", "image": null, "offers": {"@type": "Offer", "price": "8.00", "priceCurrency": "USD"}}]}], "creator": {"@id": "https://www.virtuerestaurant.com/#organization"}}
+{"@context": "http://schema.org", "@type": "Menu", "@id": "https://www.virtuerestaurant.com/menu/sweets-rations/#menu", "name": "sweet rations", "description": "Click here to order sweet rations to go!", "hasMenuSection": {"@type": "MenuSection", "name": "", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "millie\u0027s puddin\u0027", "description": "banana pudding, nilla wafers", "image": null, "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "everybody loves the sunshine", "description": "lemon, toasted meringue, shortbread, blood orange", "image": null, "offers": {"@type": "Offer", "price": "9.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "we finally got a piece of the pie", "description": "peanut butter pie, dark chocolate, graham crust", "image": null, "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "red velvet cake", "description": "cream cheese icing", "image": null, "offers": {"@type": "Offer", "price": "9.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Vanilla Bean Ice Cream", "description": "pint", "image": null, "offers": {"@type": "Offer", "price": "6.00", "priceCurrency": "USD"}}]}, "creator": {"@id": "https://www.virtuerestaurant.com/#organization"}}
+{"@context": "http://schema.org", "@type": "Menu", "@id": "https://www.virtuerestaurant.com/menu/beverages/#menu", "name": "beverages", "description": "", "hasMenuSection": [{"@type": "MenuSection", "name": "sparkling", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "Zardetto", "description": "italy", "image": null, "offers": [{"@type": "Offer", "price": "12.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "48.00", "priceCurrency": "USD", "description": "bottle"}]}, {"@type": "MenuItem", "name": "Shramsberg \u2018mirabelle\u2019", "description": "brut rose north coast", "image": null, "offers": [{"@type": "Offer", "price": "17.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "68.00", "priceCurrency": "USD", "description": "bottle"}]}]}, {"@type": "MenuSection", "name": "whites", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "Sauvion", "description": "chenin blanc 2018", "image": null, "offers": [{"@type": "Offer", "price": "13.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "52.00", "priceCurrency": "USD", "description": "bottle"}]}, {"@type": "MenuItem", "name": "c.v.n.e", "description": "viura 2015 rioja", "image": null, "offers": [{"@type": "Offer", "price": "14.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "56.00", "priceCurrency": "USD", "description": "bottle"}]}, {"@type": "MenuItem", "name": "Stephen Vincent", "description": "chardonnay 2018 north coast", "image": null, "offers": [{"@type": "Offer", "price": "15.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "60.00", "priceCurrency": "USD", "description": "bottle"}]}]}, {"@type": "MenuSection", "name": "ros\u00e9", "description": "", "hasMenuItem": {"@type": "MenuItem", "name": "The Pinot Project", "description": "", "image": null, "offers": [{"@type": "Offer", "price": "13.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "52.00", "priceCurrency": "USD", "description": "bottle"}]}}, {"@type": "MenuSection", "name": "reds", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "The Guide", "description": "pinot noir 2018 oregon", "image": null, "offers": [{"@type": "Offer", "price": "12.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "48.00", "priceCurrency": "USD", "description": "bottle"}]}, {"@type": "MenuItem", "name": "daumen cotes-du-rhone", "description": "grenache/mourvedre 2015 france", "image": null, "offers": [{"@type": "Offer", "price": "13.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "52.00", "priceCurrency": "USD", "description": "bottle"}]}, {"@type": "MenuItem", "name": "d.v. catena", "description": "malbec 2017 mendoza", "image": null, "offers": [{"@type": "Offer", "price": "15.00", "priceCurrency": "USD", "description": "glass"}, {"@type": "Offer", "price": "60.00", "priceCurrency": "USD", "description": "bottle"}]}]}, {"@type": "MenuSection", "name": "Cocktails", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "border patrol", "description": "mezcal, basil, prosecco", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Patience is a Virtue", "description": "vodka, creme yvette, rhubarb bitters", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "verdant lady", "description": "gin, chartreuse, lime, mint", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "justify", "description": "bourbon, white rum, grenadine, orange liquor", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "chiapas old fashioned", "description": "tequila, mezcal, aztec chocolate bitters", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "uncle honey", "description": "honey whiskey, lemon, ginger", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "hyde park sazerac", "description": "sazerac rye, absinthe, bitters", "image": null, "offers": {"@type": "Offer", "price": "16.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "alcohol-free", "description": "", "hasMenuItem": {"@type": "MenuItem", "name": "the hummingbird", "description": "basil, bitter lemon", "image": null, "offers": {"@type": "Offer", "price": "6.00", "priceCurrency": "USD"}}}, {"@type": "MenuSection", "name": "beer / cider", "description": "", "hasMenuItem": {"@type": "MenuItem", "name": "bottles/cans", "description": "None", "image": null, "offers": [{"@type": "Offer", "price": "5.00", "priceCurrency": "USD", "description": "modelo especial"}, {"@type": "Offer", "price": "7.00", "priceCurrency": "USD", "description": "half acre daisy cutter"}, {"@type": "Offer", "price": "5.00", "priceCurrency": "USD", "description": "miller high life"}, {"@type": "Offer", "price": "7.00", "priceCurrency": "USD", "description": "half acre pony pilsner"}, {"@type": "Offer", "price": "6.00", "priceCurrency": "USD", "description": "virtue rose cider"}, {"@type": "Offer", "price": "7.00", "priceCurrency": "USD", "description": "revolution eugene porter"}, {"@type": "Offer", "price": "7.00", "priceCurrency": "USD", "description": "revolution anti-hero"}]}}], "creator": {"@id": "https://www.virtuerestaurant.com/#organization"}}
+{"@context": "http://schema.org", "@type": "Menu", "@id": "https://www.virtuerestaurant.com/menu/spirits/#menu", "name": "spirits", "description": "Prices reflect 2-ounce pour.\u0026nbsp; Additional mixers will be extra.", "hasMenuSection": [{"@type": "MenuSection", "name": "vodka", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "virtue vodka", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "titos", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "grey goose", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "mezcal", "description": "", "hasMenuItem": {"@type": "MenuItem", "name": "bahnez joven", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}}, {"@type": "MenuSection", "name": "amaro", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "luxardo abano", "description": "", "image": null, "offers": {"@type": "Offer", "price": "9.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "meletti", "description": "", "image": null, "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "fernet branca", "description": "", "image": null, "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "sfumato", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "gin", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "CH london dry", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "bols genever", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "bombay sapphire", "description": "", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "tanqueray", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "st. george botanivor", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "hendricks", "description": "", "image": null, "offers": {"@type": "Offer", "price": "15.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "brandy / cognac", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "laird\u0027s applejack", "description": "", "image": null, "offers": {"@type": "Offer", "price": "9.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "hennessy vs", "description": "", "image": null, "offers": {"@type": "Offer", "price": "16.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "courvoisier vs", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "remy vsop", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "courvoisier xo", "description": "", "image": null, "offers": {"@type": "Offer", "price": "28.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "l\u0027essence de courvoisier", "description": "", "image": null, "offers": [{"@type": "Offer", "price": "185.00", "priceCurrency": "USD", "description": "1 ounce"}, {"@type": "Offer", "price": "370.00", "priceCurrency": "USD", "description": "2 ounces"}]}]}, {"@type": "MenuSection", "name": "rum", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "captain morgan", "description": "", "image": null, "offers": {"@type": "Offer", "price": "9.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "diamond reserve white", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "flor de cana 4yr", "description": "", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "english harbour 5yr", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "plantation 5yr", "description": "", "image": null, "offers": {"@type": "Offer", "price": "16.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "scotch", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "dewars", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "johnnie walker black", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "glenlivet 12yr", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "auchentoshan", "description": "", "image": null, "offers": {"@type": "Offer", "price": "15.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "macallan 12", "description": "", "image": null, "offers": {"@type": "Offer", "price": "18.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "macallan 18", "description": "", "image": null, "offers": {"@type": "Offer", "price": "29.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "tequila", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "corazon blanco", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "casamigos blanco", "description": "", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "herradura reposado", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "casamigos resposado", "description": "", "image": null, "offers": {"@type": "Offer", "price": "15.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "patron extra anejo", "description": "", "image": null, "offers": {"@type": "Offer", "price": "18.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "herradura ultra anejo", "description": "", "image": null, "offers": {"@type": "Offer", "price": "19.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "gran patron platinum", "description": "", "image": null, "offers": {"@type": "Offer", "price": "36.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "whiskey", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "crown royal", "description": "", "image": null, "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "jameson", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "tullamore dew", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "nikka coffey grain", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "bourbon", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "bulleit", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "chicago spirit", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "maker\u0027s mark", "description": "", "image": null, "offers": {"@type": "Offer", "price": "12.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "buffalo trace", "description": "", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "maker\u0027s mark 46", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "knob creek small batch", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "basil hayden\u0027s", "description": "", "image": null, "offers": {"@type": "Offer", "price": "15.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Maker\u0027s Mark Black Bourbon Society", "description": "", "image": null, "offers": {"@type": "Offer", "price": "16.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "woodford reserve", "description": "", "image": null, "offers": {"@type": "Offer", "price": "16.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "michter\u0027s small batch", "description": "", "image": null, "offers": {"@type": "Offer", "price": "17.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "booker\u0027s small batch", "description": "", "image": null, "offers": {"@type": "Offer", "price": "19.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Woodford Reserve Double Oaked", "description": "", "image": null, "offers": {"@type": "Offer", "price": "21.00", "priceCurrency": "USD"}}]}, {"@type": "MenuSection", "name": "rye whiskey", "description": "", "hasMenuItem": [{"@type": "MenuItem", "name": "george dickel", "description": "", "image": null, "offers": {"@type": "Offer", "price": "11.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "templeton 4yr", "description": "", "image": null, "offers": {"@type": "Offer", "price": "13.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "bulleit", "description": "", "image": null, "offers": {"@type": "Offer", "price": "14.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "michter\u0027s single barrel", "description": "", "image": null, "offers": {"@type": "Offer", "price": "17.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "Woodford Reserve Rye", "description": "", "image": null, "offers": {"@type": "Offer", "price": "18.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "angel\u0027s envy", "description": "", "image": null, "offers": {"@type": "Offer", "price": "19.00", "priceCurrency": "USD"}}, {"@type": "MenuItem", "name": "michter\u0027s 10yr single barrel", "description": "", "image": null, "offers": {"@type": "Offer", "price": "25.00", "priceCurrency": "USD"}}]}], "creator": {"@id": "https://www.virtuerestaurant.com/#organization"}}
+Skip to main content
+1462 E 53rd St.,
+Chicago, IL 60615
+Order Online
+Reservations
+Mother's Day Orders
+Store
+Menus
+About
+Join Our Team
+Press
+1462 E 53rd St.,
+Chicago, IL 60615
+Toggle Navigation
+Order Online
+Reservations
+Mother's Day Orders
+Store
+Menus
+About
+Join Our Team
+Press
+Contact
+Facebook
+Instagram
+Yelp
+1462 E 53rd St.,
+Chicago, IL 60615
+powered by BentoBox
+Main content starts here, tab to start navigating
+Scroll Down to Content
+dinner menu
+sweet rations
+beverages
+spirits
+click here
+to order dinner to go!
+Small Rations
+hoe cakes
+pimento cheese, scallion
+$
+7
+Gem Lettuce
+radish, egg, tomato, ranch dressing, crispy black eyed peas
+$
+10
+snap peas
+butter lettuce, crunchy grains, harissa
+$
+10
+asparagus
+midnight moon cheese, fried ham, caesar dressing
+$
+11
+broccoli
+sweet peppers, candied pecans, cheddar
+$
+11
+Gizzards
+dirty rice, gravy
+$
+12
+green tomatoes
+shrimp, leroy's remoulade
+$
+13
+gumbo
+chicken, andouille, rice
+$
+13
+Large Rations
+cauliflower
+cashew dukkah spice, root cellar vegetables, rice
+$
+21
+Walleye
+crawfish & shrimp étouffée, buttered grits
+$
+25
+Salmon
+Sweet peas, white beans, honey mustard
+$
+25
+Pot roast
+creamed asparagus, roasted potatoes
+$
+32
+Catfish
+blackened, carolina gold rice, barbeque carrots
+$
+26
+lemon chicken
+roasted fennel, green beans, chicken jus
+$
+24
+bbq pork steak
+smothered cabbage, granny smith apple
+$
+30
+Extra Rations
+buttered grits
+$
+6
+collards & smoked turkey
+$
+8
+mac & cheese
+$
+9
+cornbread & honey butter
+$
+8
+Click here
+to order sweet rations to go!
+millie's puddin'
+banana pudding, nilla wafers
+$
+10
+everybody loves the sunshine
+lemon, toasted meringue, shortbread, blood orange
+$
+9
+we finally got a piece of the pie
+peanut butter pie, dark chocolate, graham crust
+$
+10
+red velvet cake
+cream cheese icing
+$
+9
+Vanilla Bean Ice Cream
+pint
+$
+6
+By the Glass
+sparkling
+Zardetto
+italy
+glass
+$
+12
+bottle
+$
+48
+Shramsberg ‘mirabelle’
+brut rose north coast
+glass
+$
+17
+bottle
+$
+68
+whites
+Sauvion
+chenin blanc 2018
+glass
+$
+13
+bottle
+$
+52
+c.v.n.e
+viura 2015 rioja
+glass
+$
+14
+bottle
+$
+56
+Stephen Vincent
+chardonnay 2018 north coast
+glass
+$
+15
+bottle
+$
+60
+rosé
+The Pinot Project
+glass
+$
+13
+bottle
+$
+52
+reds
+The Guide
+pinot noir 2018 oregon
+glass
+$
+12
+bottle
+$
+48
+daumen cotes-du-rhone
+grenache/mourvedre 2015 france
+glass
+$
+13
+bottle
+$
+52
+d.v. catena
+malbec 2017 mendoza
+glass
+$
+15
+bottle
+$
+60
+Cocktails
+border patrol
+mezcal, basil, prosecco
+$
+12
+Patience is a Virtue
+vodka, creme yvette, rhubarb bitters
+$
+13
+verdant lady
+gin, chartreuse, lime, mint
+$
+14
+justify
+bourbon, white rum, grenadine, orange liquor
+$
+13
+chiapas old fashioned
+tequila, mezcal, aztec chocolate bitters
+$
+14
+uncle honey
+honey whiskey, lemon, ginger
+$
+14
+hyde park sazerac
+sazerac rye, absinthe, bitters
+$
+16
+alcohol-free
+the hummingbird
+basil, bitter lemon
+$
+6
+beer / cider
+bottles/cans
+modelo especial
+$
+5
+half acre daisy cutter
+$
+7
+miller high life
+$
+5
+half acre pony pilsner
+$
+7
+virtue rose cider
+$
+6
+revolution eugene porter
+$
+7
+revolution anti-hero
+$
+7
+Prices reflect 2-ounce pour.&nbsp; Additional mixers will be extra.
+vodka
+virtue vodka
+$
+11
+titos
+$
+12
+grey goose
+$
+14
+gin
+CH london dry
+$
+11
+bols genever
+$
+12
+bombay sapphire
+$
+13
+tanqueray
+$
+14
+st. george botanivor
+$
+14
+hendricks
+$
+15
+rum
+captain morgan
+$
+9
+diamond reserve white
+$
+11
+flor de cana 4yr
+$
+13
+english harbour 5yr
+$
+14
+plantation 5yr
+$
+16
+tequila
+corazon blanco
+$
+12
+casamigos blanco
+$
+13
+herradura reposado
+$
+14
+casamigos resposado
+$
+15
+patron extra anejo
+$
+18
+herradura ultra anejo
+$
+19
+gran patron platinum
+$
+36
+bourbon
+bulleit
+$
+12
+chicago spirit
+$
+12
+maker's mark
+$
+12
+buffalo trace
+$
+13
+maker's mark 46
+$
+14
+knob creek small batch
+$
+14
+basil hayden's
+$
+15
+Maker's Mark Black Bourbon Society
+$
+16
+woodford reserve
+$
+16
+michter's small batch
+$
+17
+booker's small batch
+$
+19
+Woodford Reserve Double Oaked
+$
+21
+rye whiskey
+george dickel
+$
+11
+templeton 4yr
+$
+13
+bulleit
+$
+14
+michter's single barrel
+$
+17
+Woodford Reserve Rye
+$
+18
+angel's envy
+$
+19
+michter's 10yr single barrel
+$
+25
+mezcal
+bahnez joven
+$
+11
+amaro
+luxardo abano
+$
+9
+meletti
+$
+10
+fernet branca
+$
+10
+sfumato
+$
+11
+brandy / cognac
+laird's applejack
+$
+9
+hennessy vs
+$
+16
+courvoisier vs
+$
+14
+remy vsop
+$
+14
+courvoisier xo
+$
+28
+l'essence de courvoisier
+1 ounce
+$
+185
+2 ounces
+$
+370
+scotch
+dewars
+$
+11
+johnnie walker black
+$
+12
+glenlivet 12yr
+$
+14
+auchentoshan
+$
+15
+macallan 12
+$
+18
+macallan 18
+$
+29
+whiskey
+crown royal
+$
+10
+jameson
+$
+11
+tullamore dew
+$
+12
+nikka coffey grain
+$
+14
+Facebook
+Instagram
+Yelp
+Contact
+powered by BentoBox
+Reservations
+Location
+Location
+Virtue Restaurant
+Number of People
+- Optional
+Number of People
+1 Person
+2 People
+3 People
+4 People
+5 People
+6 People
+7 People
+8+ People
+Date
+Time
+- Optional
+Time
+11:00 PM
+10:30 PM
+10:00 PM
+9:30 PM
+9:00 PM
+8:30 PM
+8:00 PM
+7:30 PM
+7:00 PM
+6:30 PM
+6:00 PM
+5:30 PM
+5:00 PM
+4:30 PM
+4:00 PM
+3:30 PM
+3:00 PM
+2:30 PM
+2:00 PM
+1:30 PM
+1:00 PM
+12:30 PM
+12:00 PM
+11:30 AM
+11:00 AM
+10:30 AM
+10:00 AM
+9:30 AM
+9:00 AM
+8:30 AM
+8:00 AM
+7:30 AM
+7:00 AM
+Find A Table
+Please check errors in the form above
+Thanks!

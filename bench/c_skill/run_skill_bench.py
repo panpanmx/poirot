@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import dataclasses
 import json
+import os
 import sys
 import time
 
@@ -130,7 +131,7 @@ def main() -> None:
 
     runtime = build_full_runtime(
         expert_mode=True,
-        provider="deepseek",
+        provider=os.environ.get("POIROT_PROVIDER", "sub2api"),
         logs_root=RUNS_DIR,
         skill_enabled=True,
         skill_db_path=SKILL_DB,

@@ -76,11 +76,10 @@ def rule_match(reference: str, answer: str) -> bool:
 # ── 通道 2：LLM judge ───────────────────────────────────
 
 def _build_judge():
-    from langchain_deepseek import ChatDeepSeek
+    from poirot.backend.agents.config.model_router import ModelRouter
 
-    key = __import__("os").environ.get("DEEPSEEK_API_KEY", "")
-    model = __import__("os").environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
-    return ChatDeepSeek(model=model, api_key=key, temperature=0)
+    provider = __import__("os").environ.get("POIROT_PROVIDER", "sub2api")
+    return ModelRouter().build_single(provider)
 
 
 def llm_judge(judge, question: str, reference: str, answer: str) -> bool | None:
@@ -90,7 +89,9 @@ def llm_judge(judge, question: str, reference: str, answer: str) -> bool | None:
     try:
         resp = judge.invoke(prompt)
         text = resp.content if hasattr(resp, "content") else str(resp)
-        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if isinstance(text, list):
+            text = "".join(part.get("text", str(part)) if isinstance(part, dict) else str(part) for part in text)
+        m = re.search(r"\{.*\}", str(text), re.DOTALL)
         data = json.loads(m.group()) if m else {}
         return bool(data.get("correct"))
     except Exception as exc:  # noqa: BLE001

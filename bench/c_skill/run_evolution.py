@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import os
 import sys
 
 from bench.common.env import PROJECT_ROOT, ensure_project_root, load_env
@@ -39,7 +40,7 @@ def main() -> None:
 
     runtime = build_full_runtime(
         expert_mode=True,
-        provider="deepseek",
+        provider=os.environ.get("POIROT_PROVIDER", "sub2api"),
         logs_root=RUNS_DIR,
         skill_enabled=True,
         skill_db_path=SKILL_DB,

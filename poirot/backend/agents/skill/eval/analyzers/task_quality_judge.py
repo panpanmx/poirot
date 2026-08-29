@@ -77,8 +77,9 @@ class TaskQualityJudge:
         )
         resp = self._llm.invoke([HumanMessage(content=prompt)])
         content = resp.content if hasattr(resp, "content") else str(resp)
-
-        data = self._extract_json(content)
+        if isinstance(content, list):
+            content = "".join(part.get("text", str(part)) if isinstance(part, dict) else str(part) for part in content)
+        data = self._extract_json(str(content))
         if data is None:
             return None
 

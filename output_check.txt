@@ -1,0 +1,23 @@
+Total files: 4616
+Found: bench\data\gaia\attachments\076c8171-9b3b-49b9-a477-244d2a532826.xlsx
+Found: bench\data\gaia\attachments\32102e3e-d12a-4209-9163-7b3a104efe5d.xlsx
+Found: bench\data\gaia\attachments\3da89939-209c-4086-8520-7eb734e6b4ef.xlsx
+Found: bench\data\gaia\attachments\4d0aa727-86b1-406b-9b33-f870dd14a4a5.xlsx
+Found: bench\data\gaia\attachments\4d51c4bf-4b0e-4f3d-897b-3f6687a7d9f2.xlsx
+Found: bench\data\gaia\attachments\54612da3-fd56-4941-80f4-5eb82330de25.xlsx
+Found: bench\data\gaia\attachments\5cfb274c-0207-4aa7-9575-6ac0bd95d9b2.xlsx
+Found: bench\data\gaia\attachments\65afbc8a-89ca-4ad5-8d62-355bb401f61d.xlsx
+Found: bench\data\gaia\attachments\7bd855d8-463d-4ed5-93ca-5fe35145f733.xlsx
+Found: bench\data\gaia\attachments\7cc4acfa-63fd-4acc-a1a1-e8e529e0a97f.xlsx
+Found: bench\data\gaia\attachments\8d46b8d6-b38a-47ff-ac74-cda14cf2d19b.csv
+Found: bench\data\gaia\attachments\c526d8d6-5987-4da9-b24c-83466fa172f3.xlsx
+Found: bench\data\gaia\attachments\da52d699-e8d2-4dc5-9191-a2199e0b6a9b.xlsx
+Found: bench\data\gaia\attachments\edd4d4f2-1a58-45c4-b038-67337af4e029.xlsx
+Found: bench\data\runs\gaia\threads\thread-20260828T160151-sr36\runs\gaia-5cfb274c-0207-4aa7-9575-6ac0bd95d9b2
+Found: bench\data\runs\gaia\threads\thread-20260828T160151-sr36\runs\gaia-5cfb274c-0207-4aa7-9575-6ac0bd95d9b2\artifacts
+Found: bench\data\runs\gaia\threads\thread-20260828T160151-sr36\runs\gaia-5cfb274c-0207-4aa7-9575-6ac0bd95d9b2\events.jsonl
+Found: bench\data\runs\gaia\threads\thread-20260828T160151-sr36\runs\gaia-5cfb274c-0207-4aa7-9575-6ac0bd95d9b2\record.json
+Found: bench\data\runs\gaia\threads\thread-20260828T160151-sr36\runs\gaia-5cfb274c-0207-4aa7-9575-6ac0bd95d9b2\artifacts\final_report.md
+Found: bench\data\runs\gov\water_gov_on_8k-r1.csv
+Found: bench\data\runs\gov\water_gov_on_8k-r2.csv
+Found: bench\data\runs\gov\water_gov_on_8k-r3.csv

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 import time
@@ -125,7 +126,7 @@ def main() -> None:
 
     runtime = build_full_runtime(
         expert_mode=True,
-        provider="deepseek",
+        provider=os.environ.get("POIROT_PROVIDER", "sub2api"),
         logs_root=RUNS_DIR,
         skill_enabled=False,
     )
@@ -157,9 +158,26 @@ def main() -> None:
 
             question = q["question"]
             t0 = time.time()
-            result, timed_out = run_question_with_timeout(
-                runtime, question, thread_id, run_id, args.timeout_per_question
-            )
+            try:
+                result, timed_out = run_question_with_timeout(
+                    runtime, question, thread_id, run_id, args.timeout_per_question
+                )
+            except Exception as exc:
+                print(f"  [error] 运行异常 ({exc})，等待 5s 重试...", file=sys.stderr)
+                time.sleep(5)
+                try:
+                    result, timed_out = run_question_with_timeout(
+                        runtime, question, thread_id, run_id, args.timeout_per_question
+                    )
+                except Exception as exc2:
+                    print(f"  [error] 重试仍失败: {exc2}", file=sys.stderr)
+                    progress[task_id] = "error"
+                    progress_path.write_text(json.dumps(progress), encoding="utf-8")
+                    rec = {"task_id": task_id, "status": "error", "error": str(exc2), "duration_s": round(time.time() - t0, 1)}
+                    with results_path.open("a", encoding="utf-8") as fw:
+                        fw.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    continue
+
             duration = time.time() - t0
 
             if timed_out:
@@ -175,7 +193,7 @@ def main() -> None:
                 shutdown_runtime(runtime)
                 runtime = build_full_runtime(
                     expert_mode=True,
-                    provider="deepseek",
+                    provider=os.environ.get("POIROT_PROVIDER", "sub2api"),
                     logs_root=RUNS_DIR,
                     skill_enabled=False,
                 )

@@ -140,10 +140,9 @@ def main() -> None:
                 except (json.JSONDecodeError, KeyError):
                     pass
 
-    from langchain_deepseek import ChatDeepSeek  # 延迟导入（conda env poirot）
+    from poirot.backend.agents.config.model_router import ModelRouter
 
-    llm = ChatDeepSeek(model=os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
-                       api_key=os.environ.get("DEEPSEEK_API_KEY", ""), temperature=0)
+    llm = ModelRouter().build_single(os.environ.get("POIROT_PROVIDER", "sub2api"))
 
     configs = [c for c in CONFIGS if args.only_config is None or c == args.only_config]
     total = len(configs) * len(tasks) * repeats
@@ -154,7 +153,7 @@ def main() -> None:
         os.environ["POIROT_MULTIAGENT_DB_PATH"] = str(MULTIAGENT_DB)
         runtime = build_full_runtime(
             expert_mode=True,
-            provider="deepseek",
+            provider=os.environ.get("POIROT_PROVIDER", "sub2api"),
             logs_root=RUNS_DIR,
             multiagent_enabled=CONFIGS[cfg]["enabled"],
         )
@@ -172,10 +171,28 @@ def main() -> None:
                     continue
                 print(f"\n[{finished}/{total}] {run_id} (cls={t['cls']})")
                 t0 = time.time()
-                result, timed_out = run_with_timeout(
-                    lambda: runtime.run_question(question=t["text"], run_id=run_id),
-                    timeout_s=args.timeout,
-                )
+                try:
+                    result, timed_out = run_with_timeout(
+                        lambda: runtime.run_question(question=t["text"], run_id=run_id),
+                        timeout_s=args.timeout,
+                    )
+                except Exception as exc:
+                    print(f"  [error] run 异常 ({exc})，等待 15s 后重试...", file=sys.stderr)
+                    time.sleep(15)
+                    try:
+                        result, timed_out = run_with_timeout(
+                            lambda: runtime.run_question(question=t["text"], run_id=run_id),
+                            timeout_s=args.timeout,
+                        )
+                    except Exception as exc2:
+                        print(f"  [error] 重试仍失败: {exc2}", file=sys.stderr)
+                        rec = {"run_id": run_id, "config": cfg, "task_id": t["task_id"],
+                               "cls": t["cls"], "status": "error", "error": str(exc2),
+                               "duration_s": round(time.time() - t0, 1)}
+                        with runs_path.open("a", encoding="utf-8") as fw:
+                            fw.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                        continue
+
                 duration = time.time() - t0
                 if timed_out:
                     rec = {"run_id": run_id, "config": cfg, "task_id": t["task_id"],
@@ -203,6 +220,7 @@ def main() -> None:
 
                 with runs_path.open("a", encoding="utf-8") as fw:
                     fw.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                time.sleep(5)
 
         # 配置级快照：委派计数器（隔离 DB，{表名: rows}）+ 探针
         snap = {
